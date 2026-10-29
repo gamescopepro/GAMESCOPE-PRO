@@ -410,7 +410,7 @@ async function runFullUpdate({silent=false}={}){
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults(futureGames,false);
   document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
-  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(previous?"نتایج با بررسی قبلی مقایسه شدند؛ موارد تازه یعنی مواردی که در نتایج قبلیِ دریافت‌شده نبودند.":"این اولین بررسی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ فروشگاه را تضمین نمی‌کند.";
+  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه شدند؛ موارد در گزارش، تغییرات واقعی ذخیره‌شده هستند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ فروشگاه را تضمین نمی‌کند.";
   if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
   else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
   else note+=" این بررسی فقط فهرست آنلاین را تازه کرد؛ انتشار تغییرات سراسری فقط با ورود مالک انجام می‌شود.";
@@ -622,7 +622,7 @@ render();
  };
  window.gamescopeStoreUpdateReport=async function(report){
   if(!currentUser||!isOwner)return {stored:false};
-  const {error}=await client.from("site_update_runs").insert({status:report.status||"success",added_count:report.added_count||0,updated_count:report.updated_count||0,note:String(report.note||"").slice(0,4000),items:Array.isArray(report.items)?report.items.slice(0,30):[],actor_id:currentUser.id});
+  const {error}=await client.from("site_update_runs").insert({status:report.status||"success",added_count:report.added_count||0,updated_count:report.updated_count||0,note:String(report.note||"").slice(0,4000),items:Array.isArray(report.items)?report.items.slice(0,30):[]});
   if(error)return {stored:false,error:error.message};
   return {stored:true};
  };
