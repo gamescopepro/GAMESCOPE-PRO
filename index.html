@@ -53,12 +53,19 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
       <div class="account-tile"><b>💾 فضای ذخیره‌سازی</b><span>فضای استفاده‌شده و خالی پس از فراهم شدن اتصال سازگار نمایش داده می‌شود.</span></div>
       <div class="account-tile"><b>🟢 وضعیت کنسول</b><span>وضعیت آنلاین بودن و اطلاعات در دسترس کنسول، در صورت پشتیبانی سرویس.</span></div>
     </div>
-    <div class="account-note"><b>🔐 اتصال امن هنوز راه‌اندازی نشده است.</b><br>این آیکون و صفحه به سایت اضافه شده‌اند؛ اما ورود واقعی PSN و خواندن اطلاعات خصوصی به بک‌اند امن و روش مجاز احراز هویت نیاز دارد. این فایل HTML به‌تنهایی نمی‌تواند ورود رسمی یا وضعیت زندهٔ کنسول را ایجاد کند. رمز و کد تأیید PSN را در این صفحه یا در چت وارد نکن.</div>
-    <div class="account-buttons">
-      <a class="account-btn" href="https://www.playstation.com/" target="_blank" rel="noopener noreferrer">باز کردن سایت رسمی PlayStation ↗</a>
-      <a class="account-btn secondary" href="https://www.playstation.com/de-de/support/games/playstation-app-features/" target="_blank" rel="noopener noreferrer">امکانات رسمی PlayStation App</a>
+    <div class="account-note"><b>🔐 بررسی وضعیت حساب</b><br>ایمیل به‌تنهایی وضعیت اکانت را مشخص نمی‌کند. برای دیدن وضعیت واقعی، باید در صفحهٔ رسمی PlayStation وارد حسابت شوی. این سایت ایمیلت را ذخیره یا برای جایی ارسال نمی‌کند. رمز عبور و کد تأیید را اینجا وارد نکن.</div>
+    <div style="margin:14px 0">
+      <label for="psnEmail" style="display:block;margin-bottom:8px;font-weight:bold">ایمیل اکانت PSN</label>
+      <input id="psnEmail" type="email" autocomplete="email" placeholder="ایمیل اکانت PlayStation" style="width:100%;padding:13px;border-radius:12px;border:1px solid #35506c;background:#071321;color:#fff;font:inherit">
+      <p style="color:#9aabc4;font-size:12px;line-height:1.8">ایمیل فقط برای بررسی ظاهری در همین صفحه است؛ برای حفظ امنیت، ذخیره نمی‌شود و خودکار به Sony ارسال نمی‌شود.</p>
+      <div id="psnEmailStatus" class="account-status" role="status">برای بررسی تعلیق یا محدودیت حساب، از صفحهٔ رسمی پشتیبانی استفاده کن.</div>
     </div>
-    <div class="account-status" id="psnAccountStatus">وضعیت اتصال: متصل نشده · این سایت فعلاً هیچ داده‌ای از حساب PSN دریافت نمی‌کند.</div>
+    <div class="account-buttons">
+      <button class="account-btn" id="checkPsnStatus" type="button">بررسی وضعیت در سایت رسمی ↗</button>
+      <a class="account-btn secondary" href="https://www.playstation.com/en-us/support/account/suspensions/" target="_blank" rel="noopener noreferrer">راهنمای تعلیق حساب</a>
+      <a class="account-btn secondary" href="https://www.playstation.com/de-de/support/" target="_blank" rel="noopener noreferrer">پشتیبانی PlayStation</a>
+    </div>
+    <div class="account-status" id="psnAccountStatus">وضعیت اتصال: اتصال مستقیم به حساب PSN راه‌اندازی نشده است؛ وضعیت واقعی فقط پس از ورود امن در سایت رسمی قابل بررسی است.</div>
   </section>
 </div>
 
@@ -409,6 +416,19 @@ render();
   function closePanel(){ overlay.classList.remove('open'); document.body.style.overflow=''; openBtn.focus(); }
   openBtn.addEventListener('click', openPanel);
   closeBtn.addEventListener('click', closePanel);
+  const emailInput = document.getElementById('psnEmail');
+  const emailStatus = document.getElementById('psnEmailStatus');
+  const checkStatusBtn = document.getElementById('checkPsnStatus');
+  checkStatusBtn.addEventListener('click', function(){
+    const email = emailInput.value.trim();
+    if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      emailStatus.textContent = 'لطفاً یک ایمیل معتبر وارد کن. ایمیل در این صفحه ذخیره یا ارسال نمی‌شود.';
+      emailInput.focus();
+      return;
+    }
+    emailStatus.textContent = 'ایمیل از نظر قالب درست است؛ اما وضعیت حساب را نمی‌توان فقط با ایمیل تشخیص داد. صفحهٔ رسمی PlayStation باز می‌شود تا خودت امن وارد شوی.';
+    window.open('https://www.playstation.com/en-us/support/account/suspensions/', '_blank', 'noopener,noreferrer');
+  });
   overlay.addEventListener('click', function(e){ if(e.target === overlay) closePanel(); });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && overlay.classList.contains('open')) closePanel(); });
 })();
