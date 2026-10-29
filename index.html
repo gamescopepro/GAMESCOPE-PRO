@@ -185,8 +185,19 @@ async function rawgFetch(path,params={}){
  }
  return data
 }
+const rawgDetailsCache=new Map();
+async function rawgGameDetails(id){
+ const key=String(id);
+ if(rawgDetailsCache.has(key))return rawgDetailsCache.get(key);
+ const pending=rawgFetch("/games/"+encodeURIComponent(key));
+ rawgDetailsCache.set(key,pending);
+ try{const detail=await pending;rawgDetailsCache.set(key,detail);return detail}catch(e){rawgDetailsCache.delete(key);throw e}
+}
+function companyNames(g){
+ return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
+}
 function rawgGameObject(g){
- return {id:"rawg_"+g.id,title:g.name||"بازی بدون نام",genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.id,cover:g.background_image||""}
+ return {id:"rawg_"+g.id,title:g.name||"بازی بدون نام",genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown",storeUrl:"https://store.playstation.com/en-us/search/"+encodeURIComponent(g.name||""),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.id,cover:g.background_image||""}
 }
 function addRawgGame(id){
  const g=onlineCache.get(String(id));if(!g){toast("اطلاعات بازی در دسترس نیست");return}
@@ -207,11 +218,28 @@ function renderOnlineResults(results,append=false){
   const companies=[...(g.publishers||[]).map(x=>x.name),...(g.developers||[]).map(x=>x.name)].filter(Boolean);
   const company=[...new Set(companies)].slice(0,2).join(' • ')||'شرکت سازنده/ناشر در RAWG ثبت نشده';
   const companyInitial=esc((companies[0]||'🎮').slice(0,1).toUpperCase());
-  return '<article class="card"><div class="cover" style="overflow:hidden">'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="display:flex;align-items:center;gap:7px"><span style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز RAWG: <b class="score">'+rating+'</b> / 5</div><div class="card-actions"><button onclick="addRawgGame('+Number(g.id)+')">＋ افزودن به کتابخانه</button><a class="secondary" href="'+storeLink+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:9px 12px;border-radius:10px;text-decoration:none;color:inherit">جست‌وجو در PS Store ↗</a></div></div></article>' 
+  return '<article class="card" data-online-game-id="'+Number(g.id)+'"><div class="cover" style="overflow:hidden">'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز RAWG: <b class="score">'+rating+'</b> / 5</div><div class="card-actions"><button onclick="addRawgGame('+Number(g.id)+')">＋ افزودن به کتابخانه</button><a class="secondary" href="'+storeLink+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:9px 12px;border-radius:10px;text-decoration:none;color:inherit">جست‌وجو در PS Store ↗</a></div></div></article>' 
  }).join("");
  if(!append)box.innerHTML="";
  box.insertAdjacentHTML("beforeend",html);
  document.getElementById("onlineMore").classList.toggle("hidden",!onlineNext);
+ enrichOnlineCompanies(results);
+}
+async function enrichOnlineCompanies(results){
+ const targets=(results||[]).filter(g=>!companyNames(g).length).slice(0,10);
+ for(const game of targets){
+  try{
+   const detail=await rawgGameDetails(game.id), names=companyNames(detail);
+   if(!names.length)continue;
+   onlineCache.set(String(game.id),{...game,...detail});
+   const card=document.querySelector('[data-online-game-id="'+Number(game.id)+'"]');
+   if(card){
+    const label=card.querySelector("[data-company-label]"),initial=card.querySelector("[data-company-initial]");
+    if(label)label.textContent="شرکت: "+names.join(" • ");
+    if(initial)initial.textContent=names[0].trim().slice(0,1).toUpperCase();
+   }
+  }catch(e){/* Keep results usable if RAWG details are unavailable. */}
+ }
 }
 function normalizeGameName(value){
  return String(value||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," ");
