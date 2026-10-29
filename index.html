@@ -56,7 +56,13 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
       </div></div>
       <div id="gsAuthUser" class="hidden"><p id="gsWelcome" style="line-height:1.8"></p><div class="account-buttons"><button id="gsLogout" class="account-btn secondary" type="button">خروج از حساب</button></div></div>
       <div id="gsAuthMessage" class="account-status" role="status" aria-live="polite">ثبت‌نام با ایمیل و نام کاربری یکتا؛ کتابخانه و علاقه‌مندی‌هایت بین دستگاه‌ها همگام می‌شوند.</div>
-    </div><div style="margin-top:18px"><h3>🎮 اطلاعات حساب PlayStation (PSN)</h3></div>
+    </div><div class="panel" id="gsOwnerGate" style="margin-top:14px;border:1px solid #e4b94f;display:block">
+<div class="section-title"><h3>👑 ورود اختصاصی مالک</h3><span class="hint">OWNER ACCESS</span></div>
+<p style="line-height:1.8">این بخش فقط برای مالک تأییدشدهٔ GAMESCOPE است. سرور نقش حساب را بررسی می‌کند.</p>
+<div class="formgrid"><div class="field"><label for="gsOwnerEmail">ایمیل مالک</label><input id="gsOwnerEmail" type="email" autocomplete="username" placeholder="ایمیل مالک"></div><div class="field"><label for="gsOwnerPassword">رمز عبور</label><input id="gsOwnerPassword" type="password" autocomplete="current-password" placeholder="رمز عبور"></div><div class="field full"><button id="gsOwnerLogin" type="button">ورود به پنل مالک 👑</button></div></div>
+<div id="gsOwnerMessage" class="account-status" role="status" aria-live="polite">پنل مالک تا تأیید نقش سروری قفل است.</div>
+<div id="gsOwnerPanel" class="hidden" style="margin-top:12px"><h3>👑 پنل مدیریت GAMESCOPE</h3><p>مالک تأیید شد. این نسخه نقطهٔ ورود پنل مالک را فراهم می‌کند؛ عملیات مدیریتی حساس باید با مجوز سمت سرور پیاده‌سازی شوند.</p><div class="stats"><div class="stat"><b>OWNER</b><span>سطح دسترسی</span></div><div class="stat"><b>فعال</b><span>وضعیت پنل</span></div></div></div></div>
+<div style="margin-top:18px"><h3>🎮 اطلاعات حساب PlayStation (PSN)</h3></div>
     <div class="account-grid">
       <div class="account-tile"><b>👤 پروفایل PSN</b><span>پس از راه‌اندازی اتصال امن، آیدی و اطلاعات قابل‌دسترسی حساب اینجا نمایش داده می‌شود.</span></div>
       <div class="account-tile"><b>🎮 بازی‌های من</b><span>نمایش کتابخانه و داده‌های بازی در صورت فراهم بودن دسترسی مجاز.</span></div>
@@ -456,7 +462,7 @@ render();
  function showUser(user,username){
   currentUser=user;$("gsAuthForms").classList.toggle("hidden",!!user);$("gsAuthUser").classList.toggle("hidden",!user);
   $("gsAuthState").textContent=user?"متصل و همگام‌سازی فعال":"وارد نشده‌ای";
-  if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
+  if(!user){$("gsOwnerPanel")?.classList.add("hidden");if($("gsOwnerMessage"))$("gsOwnerMessage").textContent="برای دسترسی ویژه، از بخش ورود اختصاصی مالک استفاده کن."} if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
  }
  async function syncDown(){
   if(!currentUser||syncing)return;syncing=true;
@@ -473,6 +479,20 @@ render();
   if(!currentUser||window.__gamescopeCloudLoading||!g)return;
   const p={user_id:currentUser.id,game_id:String(g.id),game_title:String(g.title||"بازی"),in_library:!!g.owned,is_favorite:!!g.fav,rating:g.rating==null||g.rating===""?null:Number(g.rating),note:String(g.note||"").slice(0,3000),updated_at:new Date().toISOString()};
   const {error}=await client.from("user_games").upsert(p,{onConflict:"user_id,game_id"});if(error)say("ذخیره محلی انجام شد، اما همگام‌سازی ابری خطا داد: "+error.message);
+ };
+ $("gsOwnerLogin").onclick=async()=>{
+  const email=$("gsOwnerEmail").value.trim(),password=$("gsOwnerPassword").value;
+  if(!email||!password){$("gsOwnerMessage").textContent="ایمیل و رمز عبور مالک را وارد کن.";return}
+  $("gsOwnerMessage").textContent="در حال بررسی حساب مالک…";
+  const {data,error}=await client.auth.signInWithPassword({email,password});
+  if(error){$("gsOwnerMessage").textContent="ورود انجام نشد؛ ایمیل یا رمز را بررسی کن.";return}
+  const {data:profile,error:profileError}=await client.from("profiles").select("role,username").eq("id",data.user.id).maybeSingle();
+  if(profileError||profile?.role!=="owner"){
+    await client.auth.signOut();showUser(null);$("gsOwnerPanel").classList.add("hidden");
+    $("gsOwnerMessage").textContent="این حساب دسترسی مالک ندارد. نقش OWNER باید در پایگاه داده تأیید شده باشد.";return;
+  }
+  showUser(data.user,profile.username);$("gsOwnerPanel").classList.remove("hidden");
+  $("gsOwnerMessage").textContent="تأیید شد؛ خوش آمدی، مالک GAMESCOPE.";await syncDown();
  };
  $("gsSignup").onclick=async()=>{
   const username=$("gsUsername").value.trim(),email=$("gsEmail").value.trim(),password=$("gsPassword").value;
