@@ -499,7 +499,7 @@ render();
   if(!/^[A-Za-z0-9_]{3,20}$/.test(username)){say("نام کاربری باید ۳ تا ۲۰ حرف انگلیسی، عدد یا _ باشد.");return}
   if(!email||password.length<8){say("ایمیل معتبر و رمز حداقل ۸ کاراکتری وارد کن.");return}
   const btn=$("gsSignup");btn.disabled=true;btn.textContent="در حال ثبت‌نام…";say("در حال ساخت حساب؛ لطفاً صفحه را نبند…");
-  try{const {data,error}=await client.auth.signUp({email,password,options:{data:{username},emailRedirectTo:location.origin+location.pathname}});
+  try{const {data,error}=await client.auth.signUp({email,password,options:{data:{username},emailRedirectTo:'https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/'}});
   if(error){const m=String(error.message||"");say(/already registered|user already exists/i.test(m)?"برای این ایمیل احتمالاً حساب وجود دارد؛ به‌جای ثبت‌نام، «ورود» یا «بازیابی رمز با ایمیل» را بزن.":/password/i.test(m)&&/weak|short|least/i.test(m)?"رمز انتخابی ضعیف یا کوتاه است؛ رمز قوی‌تری با حداقل ۸ کاراکتر انتخاب کن.":/invalid email/i.test(m)?"فرمت ایمیل معتبر نیست؛ ایمیل را دوباره بررسی کن.":/rate limit|too many requests/i.test(m)?"درخواست‌های زیادی ارسال شده؛ چند دقیقه صبر کن و دوباره تلاش کن.":"ثبت‌نام ناموفق بود: "+m);return}
   if(data.session){showUser(data.user,username);await syncDown();say("حساب ساخته شد و وارد شدی.")}else say("درخواست ثبت‌نام ارسال شد. ایمیلت و پوشهٔ هرزنامه را برای لینک تأیید بررسی کن؛ سپس با همان رمز وارد شو. اگر ایمیل نیامد، ممکن است تأیید ایمیل یا محدودیت ارسال در Supabase نیاز به بررسی داشته باشد.");
   }catch(e){say("ارتباط با سرویس ثبت‌نام برقرار نشد: "+(e?.message||"خطای شبکه")+"؛ اینترنت را بررسی و دوباره امتحان کن.")}finally{btn.disabled=false;btn.textContent="ساخت حساب"}
@@ -510,7 +510,7 @@ render();
   const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await syncDown();
  };
  $("gsForgot").onclick=async()=>{const email=$("gsEmail").value.trim();if(!email){say("اول ایمیلت را وارد کن.");return}
-  const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});say(error?"خطا در ارسال ایمیل بازیابی: "+error.message:"اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود.");};
+  const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:'https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/'});say(error?"خطا در ارسال ایمیل بازیابی: "+error.message:"اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود.");};
  $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}showUser(null);say("از حساب خارج شدی.")};
  client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(syncDown,0)}else showUser(null)});
  client.auth.getSession().then(({data})=>{if(data.session){showUser(data.session.user);syncDown()}else showUser(null)});
