@@ -410,7 +410,7 @@ function searchVariants(query){
   variants.push(words.slice(0,2).join(" "));
  }
  if(words.length>=4)variants.push(words.slice(0,3).join(" "));
- if(words.length===2)variants.push(words[0]);
+ if(words.length===2){variants.push(words[0]);variants.push(words[1])}
  return [...new Set(variants.map(x=>String(x||"").trim()).filter(Boolean))].slice(0,6);
 }
 function scoreGameSearchResult(gameName,query,variants){
