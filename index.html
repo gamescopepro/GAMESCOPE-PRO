@@ -58,8 +58,34 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 
 
 
-<header><div class="wrap brand"><div class="logo">🎮</div><div><h1>GAMESCOPE <span style="color:#38d7ff">PRO</span></h1><p id="gsSiteTagline">کتابخانه شخصی بازی‌های پلی‌استیشن ۵</p></div><div class="top-actions"><div class="owner-menu-wrap hidden" id="gsOwnerMenuWrap"><button class="account-icon" id="gsOwnerMenuBtn" aria-label="منوی مالک" title="ابزارهای مالک">⋮</button><div class="owner-menu hidden" id="gsOwnerMenu"><button id="gsOpenAdmin" type="button">👑 ورود به پنل مالک</button></div></div><button class="account-icon" id="openPsnAccount" aria-label="حساب GAMESCOPE" title="حساب GAMESCOPE">👤</button></div></div></header>
+<header><div class="wrap brand"><div class="logo">🎮</div><div><h1>GAMESCOPE <span style="color:#38d7ff">PRO</span></h1><p id="gsSiteTagline">کتابخانه شخصی بازی‌های پلی‌استیشن ۵</p></div><div class="top-actions"><div class="owner-menu-wrap hidden" id="gsOwnerMenuWrap"><button class="account-icon" id="gsOwnerMenuBtn" aria-label="منوی مالک" title="ابزارهای مالک">⋮</button><div class="owner-menu hidden" id="gsOwnerMenu"><button id="gsOpenAdmin" type="button">👑 ورود به پنل مالک</button></div></div><button class="account-icon" id="openGsSettings" aria-label="تنظیمات" title="تنظیمات">⚙️</button><button class="account-icon" id="openPsnAccount" aria-label="حساب GAMESCOPE" title="حساب GAMESCOPE">👤</button></div></div></header>
 <section class="hero wrap"><div class="hero-card"><div class="eyebrow">YOUR GAMING UNIVERSE</div><h2 id="gsHeroTitle">همهٔ بازی‌هات، یک‌جا ✨</h2><p id="gsHeroDescription">بازی‌ها رو پیدا کن، به کتابخانه‌ات اضافه کن، امتیاز بده و فهرست مخصوص خودت رو بساز. اطلاعاتت روی همین دستگاه ذخیره می‌شه.</p><div class="stats"><div class="stat"><b id="countStat">0</b><span>بازی در کتابخانه</span></div><div class="stat"><b id="favStat">0</b><span>علاقه‌مندی‌ها</span></div><div class="stat"><b id="avgStat">—</b><span>میانگین امتیاز تو</span></div></div></div></section>
+
+
+<div class="account-overlay" id="gsSettingsOverlay" role="dialog" aria-modal="true" aria-labelledby="gsSettingsTitle">
+ <section class="account-panel">
+  <div class="account-panel-head">
+   <div class="logo" style="flex:0 0 48px;width:48px;height:48px;font-size:24px">⚙️</div>
+   <div><h2 id="gsSettingsTitle">تنظیمات GAMESCOPE</h2><p>وضعیت حساب و زبان سایت</p></div>
+   <button class="account-close" id="closeGsSettings" type="button">بستن ✕</button>
+  </div>
+  <div class="account-grid">
+   <div class="account-tile"><b>👤 وضعیت حساب</b><span id="gsSettingsAccountStatus">در حال بررسی…</span></div>
+   <div class="account-tile"><b>🔐 روش ورود</b><span id="gsSettingsMethod">در حال بررسی…</span></div>
+   <div class="account-tile"><b>✉️ ایمیل حساب</b><span id="gsSettingsEmail">—</span></div>
+  </div>
+  <div class="panel">
+   <div class="section-title"><h3>🌐 زبان سایت</h3><span class="hint">تغییر زبان در هر زمان</span></div>
+   <label class="gs-auth-language" for="gsSettingsLanguage"><span>زبان موردنظر را انتخاب کن</span>
+    <select id="gsSettingsLanguage" autocomplete="off">
+         <option value="fa">فارسی — Persian</option><option value="en">English</option><option value="de">Deutsch</option><option value="es">Español</option><option value="fr">Français</option><option value="pt">Português</option><option value="ar">العربية</option><option value="zh">简体中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="ru">Русский</option><option value="hi">हिन्दी</option><option value="tr">Türkçe</option><option value="it">Italiano</option><option value="nl">Nederlands</option><option value="pl">Polski</option><option value="id">Bahasa Indonesia</option><option value="th">ไทย</option><option value="vi">Tiếng Việt</option><option value="ur">اردو</option><option value="bn">বাংলা</option><option value="he">עברית</option><option value="uk">Українська</option><option value="sv">Svenska</option><option value="no">Norsk</option><option value="da">Dansk</option><option value="fi">Suomi</option><option value="el">Ελληνικά</option><option value="cs">Čeština</option><option value="ro">Română</option><option value="hu">Magyar</option><option value="ms">Bahasa Melayu</option><option value="fil">Filipino</option><option value="sw">Kiswahili</option><option value="pa">ਪੰਜਾਬੀ</option><option value="ta">தமிழ்</option><option value="te">తెలుగు</option><option value="mr">मराठी</option><option value="sr">Српски</option><option value="hr">Hrvatski</option><option value="sk">Slovenčina</option><option value="bg">Български</option>
+        </select>
+   </label>
+   <p class="account-status">زبان انتخابی به‌صورت خودکار ذخیره می‌شود و در بازدید بعدی هم حفظ خواهد شد.</p>
+  </div>
+  <div class="account-buttons"><button class="account-btn secondary" id="gsSettingsOpenAccount" type="button">مدیریت حساب / ورود</button><button class="account-btn" id="closeGsSettingsBottom" type="button">انجام شد</button></div>
+ </section>
+</div>
 
 <div class="account-overlay" id="psnAccountOverlay" role="dialog" aria-modal="true" aria-labelledby="psnAccountTitle">
   <section class="account-panel">
@@ -753,9 +779,31 @@ render();
   if(error){adminStatus("تنظیمات ذخیره نشد: "+error.message);return;}
   applySiteSettings(row);adminStatus("متن صفحهٔ اصلی برای همهٔ کاربران ذخیره شد.");
  });
+ function updateSettingsAccount(user){
+  const status=$("gsSettingsAccountStatus"),method=$("gsSettingsMethod"),email=$("gsSettingsEmail");
+  if(!user){
+   let guest=false;try{guest=sessionStorage.getItem("gamescope_entry_choice_v1")==="guest"}catch(e){}
+   if(status)status.textContent=guest?"مهمان؛ حسابی وارد نشده":"وارد حساب نشده‌ای";
+   if(method)method.textContent=guest?"ورود به‌صورت مهمان":"هنوز وارد نشده‌ای";
+   if(email)email.textContent="—";
+   return;
+  }
+  const identityProviders=(user.identities||[]).map(x=>x.provider);
+  const provider=user.app_metadata?.provider;
+  let methodText="حساب ایمیلی";
+  let marker=null;try{marker=JSON.parse(localStorage.getItem("gamescope_login_method_v1")||"null")}catch(e){}
+  if(provider==="google"||identityProviders.includes("google"))methodText="ورود با گوگل";
+  else if(marker?.email&&String(marker.email).toLowerCase()===String(user.email||"").toLowerCase()&&marker.method==="gmail_magic")methodText="ورود با لینک جیمیل";
+  else if(marker?.email&&String(marker.email).toLowerCase()===String(user.email||"").toLowerCase()&&marker.method==="email_password")methodText="ورود با ایمیل و رمز عبور";
+  else if(provider==="email")methodText="حساب ایمیلی؛ روش ورود ثبت نشده";
+  if(status)status.textContent="وارد شده‌ای ✅";
+  if(method)method.textContent=methodText;
+  if(email)email.textContent=user.email||"ایمیل در دسترس نیست";
+ }
  function showUser(user,username){
   currentUser=user;window.gamescopeSignedIn=!!user;if(user)window.dispatchEvent(new Event("gamescope-authenticated"));$("gsAuthForms").classList.toggle("hidden",!!user);$("gsAuthUser").classList.toggle("hidden",!user);$("gsOwnerGate").classList.add("hidden");
   $("gsAuthState").textContent=user?"متصل و همگام‌سازی فعال":"وارد نشده‌ای";
+  updateSettingsAccount(user);
   if(!user){setOwnerUI(false);$("gsOwnerPanel")?.classList.add("hidden");if($("gsOwnerMessage"))$("gsOwnerMessage").textContent="برای دسترسی ویژه، از بخش ورود اختصاصی مالک استفاده کن."} if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
  }
  async function syncDown(){
@@ -808,13 +856,13 @@ render();
   const btn=$("gsSignup");btn.disabled=true;btn.textContent="در حال ثبت‌نام…";say("در حال ساخت حساب؛ لطفاً صفحه را نبند…");
   try{const {data,error}=await client.auth.signUp({email,password,options:{data:{username},emailRedirectTo:SITE_URL}});
   if(error){const m=String(error.message||"");if(/already registered|user already exists/i.test(m))$("gsResendConfirmation").classList.remove("hidden");say(/already registered|user already exists/i.test(m)?"برای این ایمیل حساب وجود دارد. به‌جای ساخت حساب دوباره، وارد شو یا از «ارسال دوباره ایمیل تأیید» استفاده کن.":/password/i.test(m)&&/weak|short|least/i.test(m)?"رمز انتخابی ضعیف یا کوتاه است؛ رمز قوی‌تری انتخاب کن.":/invalid email/i.test(m)?"فرمت ایمیل معتبر نیست؛ ایمیل را بررسی کن.":/rate limit|too many requests|over_email_send_rate_limit/i.test(m)?"سقف ارسال ایمیل Supabase پر شده است؛ درخواست‌های پشت‌سرهم را متوقف کن و بعداً دوباره امتحان کن.":"ثبت‌نام ناموفق بود: "+m);return}
-  if(data.session){$("gsResendConfirmation").classList.add("hidden");showUser(data.user,username);await refreshOwnerState(data.user);await syncDown();say("حساب ساخته شد و وارد شدی.")}else{$("gsResendConfirmation").classList.remove("hidden");say("حساب ثبت شد، اما هنوز نشست ورود نداری. ایمیل تأیید را باز کن؛ اگر لینک خطا داد، «ارسال دوباره ایمیل تأیید» را بزن. اگر سقف ارسال پر شده باشد، Supabase موقتاً ارسال را رد می‌کند.");}
+  if(data.session){$("gsResendConfirmation").classList.add("hidden");try{localStorage.setItem("gamescope_login_method_v1",JSON.stringify({method:"email_password",email:data.user.email}))}catch(e){}showUser(data.user,username);await refreshOwnerState(data.user);await syncDown();say("حساب ساخته شد و وارد شدی.")}else{$("gsResendConfirmation").classList.remove("hidden");say("حساب ثبت شد، اما هنوز نشست ورود نداری. ایمیل تأیید را باز کن؛ اگر لینک خطا داد، «ارسال دوباره ایمیل تأیید» را بزن. اگر سقف ارسال پر شده باشد، Supabase موقتاً ارسال را رد می‌کند.");}
   }catch(e){say("ارتباط با سرویس ثبت‌نام برقرار نشد: "+(e?.message||"خطای شبکه")+"؛ اینترنت را بررسی و دوباره امتحان کن.")}finally{btn.disabled=false;btn.textContent="ساخت حساب"}
  };
  $("gsLogin").onclick=async()=>{
   const email=$("gsEmail").value.trim(),password=$("gsPassword").value;if(!email||!password){say("ایمیل و رمز عبور را وارد کن.");return}
   say("در حال ورود…");const {data,error}=await client.auth.signInWithPassword({email,password});if(error){if(/email not confirmed/i.test(error.message||"")){$("gsResendConfirmation").classList.remove("hidden");say("ایمیل این حساب هنوز تأیید نشده است. «ارسال دوباره ایمیل تأیید» را بزن؛ اگر لینک قبلی منقضی است، از لینک جدید استفاده کن.")}else say(/invalid login credentials/i.test(error.message||"")?"ایمیل یا رمز عبور درست نیست. اگر حساب تأییدنشده است، ابتدا ایمیل تأیید را انجام بده.":error.message);return}
-  const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await refreshOwnerState(data.user);await syncDown();
+  try{localStorage.setItem("gamescope_login_method_v1",JSON.stringify({method:"email_password",email:data.user.email}))}catch(e){} const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await refreshOwnerState(data.user);await syncDown();
  };
  $("gsForgot").onclick=async()=>{const email=$("gsEmail").value.trim();if(!email){say("اول ایمیلت را وارد کن.");return}
   const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:SITE_URL});say(error?"خطا در ارسال ایمیل بازیابی: "+error.message:"اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود.");};
@@ -836,7 +884,15 @@ render();
   finally{paintResendCooldown()}
  };
 
- $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}showUser(null);say("از حساب خارج شدی.")};
+ $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}try{localStorage.removeItem("gamescope_login_method_v1");sessionStorage.removeItem("gamescope_entry_choice_v1")}catch(e){}showUser(null);say("از حساب خارج شدی.")};
+ const settingsOverlay=$("gsSettingsOverlay");
+ function closeGsSettings(){settingsOverlay?.classList.remove("open")}
+ $("openGsSettings").addEventListener("click",()=>{updateSettingsAccount(currentUser);settingsOverlay.classList.add("open")});
+ $("closeGsSettings").addEventListener("click",closeGsSettings);
+ $("closeGsSettingsBottom").addEventListener("click",closeGsSettings);
+ settingsOverlay.addEventListener("click",e=>{if(e.target===settingsOverlay)closeGsSettings()});
+ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&settingsOverlay?.classList.contains("open"))closeGsSettings()});
+ $("gsSettingsOpenAccount").addEventListener("click",()=>{closeGsSettings();$("openPsnAccount").click()});
  client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
  loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();paintResendCooldown();
@@ -870,6 +926,7 @@ render();
     return;
    }
    say("در حال بازکردن صفحهٔ امن ورود Google…");
+   try{localStorage.setItem("gamescope_login_method_v1",JSON.stringify({method:"google"}))}catch(e){}
    const {error}=await client.auth.signInWithOAuth({
     provider:"google",
     options:{redirectTo:SITE_URL,queryParams:{prompt:"select_account"}}
@@ -920,7 +977,7 @@ render();
     }
     return;
    }
-   try{localStorage.setItem(GMAIL_MAGIC_COOLDOWN_KEY,String(Date.now()+60000))}catch(e){}
+   try{localStorage.setItem(GMAIL_MAGIC_COOLDOWN_KEY,String(Date.now()+60000));localStorage.setItem("gamescope_login_method_v1",JSON.stringify({method:"gmail_magic",email}))}catch(e){}
    say("لینک ورود برای "+email+" درخواست شد. صندوق ورودی و هرزنامه را بررسی کن و فقط جدیدترین لینک را باز کن. بعد از بازکردن لینک، سایت تو را وارد می‌کند.");
   }catch(e){
    say(/failed to fetch|network|load failed/i.test(String(e?.message||""))?"ارتباط با سرویس ایمیل برقرار نشد؛ اینترنت را بررسی کن.":"ارسال لینک ورود ناموفق بود؛ کمی بعد دوباره امتحان کن.");
@@ -941,7 +998,7 @@ render();
 
 <script>
 (function(){
- const select=document.getElementById("gsWelcomeLanguage"), key="gamescope_language_v1";
+ const selects=[document.getElementById("gsWelcomeLanguage"),document.getElementById("gsSettingsLanguage")].filter(Boolean), select=selects[0], key="gamescope_language_v1";
  const rtl=new Set(["fa","ar","ur","he"]);
  const tr={
  fa:{title:"حساب GAMESCOPE",tag:"کتابخانه شخصی بازی‌های پلی‌استیشن ۵",hero:"همهٔ بازی‌هات، یک‌جا ✨",desc:"بازی‌ها رو پیدا کن، به کتابخانه‌ات اضافه کن، امتیاز بده و فهرست مخصوص خودت رو بساز.",library:"بازی در کتابخانه",favorites:"علاقه‌مندی‌ها",rating:"میانگین امتیاز تو",search:"🔎 جست‌وجوی بازی‌ها...",add:"＋ افزودن بازی",export:"خروجی پشتیبان",import:"ورود پشتیبان",online:"🌐 کاتالوگ آنلاین بازی‌ها",recommended:"بازی‌های پیشنهادی",language:"🌐 زبان خود را انتخاب کنید",google:"ورود با حساب گوگل",gmail:"ورود با جیمیل",guest:"ورود به‌صورت مهمان"},
@@ -960,7 +1017,7 @@ render();
  const fallback=tr.en;
  function apply(lang,save=true){
   const t=tr[lang]||fallback;
-  document.documentElement.lang=lang;document.documentElement.dir=rtl.has(lang)?"rtl":"ltr";
+  document.documentElement.lang=lang;document.documentElement.dir=rtl.has(lang)?"rtl":"ltr";selects.forEach(el=>{el.value=lang});
   document.querySelectorAll("[data-gs-lang]").forEach(el=>{const k=el.getAttribute("data-gs-lang");if(t[k])el.textContent=t[k]});
   const tagline=document.getElementById("gsSiteTagline");if(tagline)tagline.textContent=t.tag;
   const hero=document.getElementById("gsHeroTitle");if(hero)hero.textContent=t.hero;
@@ -971,9 +1028,9 @@ render();
   const online=document.querySelector("#onlinePanel .section-title h3");if(online)online.textContent=t.online;
   if(save){try{localStorage.setItem(key,lang)}catch(e){}}
  }
- select.addEventListener("change",()=>apply(select.value,true));
+ selects.forEach(el=>el.addEventListener("change",()=>apply(el.value,true)));
  let saved="fa";try{saved=localStorage.getItem(key)||"fa"}catch(e){}
- select.value=saved;if(!Array.from(select.options).some(o=>o.value===saved))select.value="fa";apply(select.value,false);
+ if(!selects.some(el=>Array.from(el.options).some(o=>o.value===saved)))saved="fa";apply(saved,false);
 })();
 </script>
 
