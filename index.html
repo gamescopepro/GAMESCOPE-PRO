@@ -102,7 +102,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
   </div></section>
   <section class="panel"><h3 class="admin-section-title">🎮 افزودن یا ویرایش بازی در کاتالوگ عمومی</h3><input id="gsAdminEditId" type="hidden"><div class="formgrid">
    <div class="field"><label for="gsAdminGameTitle">نام بازی *</label><input id="gsAdminGameTitle" maxlength="180" placeholder="مثلاً بازی جدید"></div>
-   <div class="field"><label for="gsAdminGameGenre">ژانر</label><input id="gsAdminGameGenre" maxlength="120" placeholder="اکشن، ماجراجویی…"></div>
+   <div class="field"><label for="gsAdminGameGenre">ژانر</label><input id="gsAdminGameGenre" maxlength="120" placeholder="اکشن، ماجراجویی…"></div><div class="field"><label for="gsAdminPlatforms">پلتفرم‌ها</label><input id="gsAdminPlatforms" maxlength="240" value="PS5" placeholder="PS5، PS4، PC…"></div>
    <div class="field"><label for="gsAdminGameEmoji">ایموجی/آیکون</label><input id="gsAdminGameEmoji" maxlength="12" value="🎮"></div>
    <div class="field"><label for="gsAdminGameCritic">امتیاز منتقدان (۰ تا ۱۰)</label><input id="gsAdminGameCritic" type="number" min="0" max="10" step="0.1" placeholder="اختیاری"></div>
    <div class="field"><label for="gsAdminPublisher">شرکت سازنده/ناشر</label><input id="gsAdminPublisher" maxlength="160" placeholder="نام شرکت"></div>
@@ -197,7 +197,7 @@ function companyNames(g){
  return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
 }
 function rawgGameObject(g){
- return {id:"rawg_"+g.id,title:g.name||"بازی بدون نام",genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown",storeUrl:"https://store.playstation.com/en-us/search/"+encodeURIComponent(g.name||""),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.id,cover:g.background_image||""}
+ return {id:"rawg_"+g.id,title:g.name||"بازی بدون نام",genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",platforms:Array.isArray(g.platforms)&&g.platforms.length?g.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown",storeUrl:"https://store.playstation.com/en-us/search/"+encodeURIComponent(g.name||""),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.id,cover:g.background_image||""}
 }
 function addRawgGame(id){
  const g=onlineCache.get(String(id));if(!g){toast("اطلاعات بازی در دسترس نیست");return}
@@ -476,7 +476,7 @@ function render(){
  document.getElementById("resultCount").textContent=list.length+" بازی";
  const box=document.getElementById("games");
  if(!list.length){box.innerHTML='<div class="empty" style="grid-column:1/-1">اینجا هنوز بازی‌ای نیست.<br>می‌تونی از «افزودن بازی» استفاده کنی یا فیلتر رو تغییر بدی.</div>'}
- else box.innerHTML=list.map(g=>`<article class="card"><div class="cover">${g.cover?'<img src="'+esc(g.cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">':esc(g.emoji||"🎮")}</div><div class="card-body"><h4>${esc(g.title)}</h4><div class="meta">${esc(g.genre||"ژانر نامشخص")}</div>${g.publisher?'<div class="meta">🏢 سازنده/ناشر: '+esc(g.publisher)+'</div>':''}${g.releaseDate?'<div class="meta">📅 انتشار: '+esc(g.releaseDate)+'</div>':''}<div class="chips">${g.owned?'<span class="chip">📚 در کتابخانه</span>':'<span class="chip">کاتالوگ</span>'}${g.fav?'<span class="chip">⭐ محبوب</span>':''}${g.releaseStatus==="upcoming"?'<span class="chip">🗓️ به‌زودی</span>':g.releaseStatus==="released"?'<span class="chip">✅ منتشر شده</span>':''}</div><div class="meta">امتیاز منتقدان: <b class="score">${g.critic??"—"}</b> / 10 ${g.rating!==null&&g.rating!==""?' • امتیاز تو: <b class="score">'+esc(g.rating)+'</b>':''}</div>${g.storeUrl&&/^https?:\/\//i.test(g.storeUrl)?'<a href="'+esc(g.storeUrl)+'" target="_blank" rel="noopener noreferrer" class="account-btn secondary" style="font-size:11px;padding:8px">بازکردن صفحهٔ فروشگاه ↗</a>':''}${g.note?'<div class="meta">'+esc(g.note)+'</div>':''}<div class="card-actions"><button onclick="toggleOwned('${esc(g.id)}')">${g.owned?'✓ در کتابخانه':'＋ افزودن'}</button><button class="secondary" onclick="rateGame('${esc(g.id)}')">⭐ امتیاز</button><button class="secondary" onclick="toggleFav('${esc(g.id)}')">${g.fav?'★':'☆'}</button></div>${g.owned?`<select onchange="setStatus('${esc(g.id)}',this.value)"><option ${g.status==="در فهرست علاقه‌مندی"?"selected":""}>در فهرست علاقه‌مندی</option><option ${g.status==="در حال بازی"?"selected":""}>در حال بازی</option><option ${g.status==="تمام‌شده"?"selected":""}>تمام‌شده</option><option ${g.status==="می‌خواهم بخرم"?"selected":""}>می‌خواهم بخرم</option></select><button class="secondary" onclick="editNote('${esc(g.id)}')">📝 یادداشت</button>`:""}</div></article>`).join("");
+ else box.innerHTML=list.map(g=>`<article class="card"><div class="cover">${g.cover?'<img src="'+esc(g.cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">':esc(g.emoji||"🎮")}</div><div class="card-body"><h4>${esc(g.title)}</h4><div class="meta">${esc(g.genre||"ژانر نامشخص")}</div>${g.platforms?'<div class="meta">🎮 پلتفرم: '+esc(g.platforms)+'</div>':''}${g.publisher?'<div class="meta">🏢 سازنده/ناشر: '+esc(g.publisher)+'</div>':''}${g.releaseDate?'<div class="meta">📅 انتشار: '+esc(g.releaseDate)+'</div>':''}<div class="chips">${g.owned?'<span class="chip">📚 در کتابخانه</span>':'<span class="chip">کاتالوگ</span>'}${g.fav?'<span class="chip">⭐ محبوب</span>':''}${g.releaseStatus==="upcoming"?'<span class="chip">🗓️ به‌زودی</span>':g.releaseStatus==="released"?'<span class="chip">✅ منتشر شده</span>':''}</div><div class="meta">امتیاز منتقدان: <b class="score">${g.critic??"—"}</b> / 10 ${g.rating!==null&&g.rating!==""?' • امتیاز تو: <b class="score">'+esc(g.rating)+'</b>':''}</div>${g.storeUrl&&/^https?:\/\//i.test(g.storeUrl)?'<a href="'+esc(g.storeUrl)+'" target="_blank" rel="noopener noreferrer" class="account-btn secondary" style="font-size:11px;padding:8px">بازکردن صفحهٔ فروشگاه ↗</a>':''}${g.note?'<div class="meta">'+esc(g.note)+'</div>':''}<div class="card-actions"><button onclick="toggleOwned('${esc(g.id)}')">${g.owned?'✓ در کتابخانه':'＋ افزودن'}</button><button class="secondary" onclick="rateGame('${esc(g.id)}')">⭐ امتیاز</button><button class="secondary" onclick="toggleFav('${esc(g.id)}')">${g.fav?'★':'☆'}</button></div>${g.owned?`<select onchange="setStatus('${esc(g.id)}',this.value)"><option ${g.status==="در فهرست علاقه‌مندی"?"selected":""}>در فهرست علاقه‌مندی</option><option ${g.status==="در حال بازی"?"selected":""}>در حال بازی</option><option ${g.status==="تمام‌شده"?"selected":""}>تمام‌شده</option><option ${g.status==="می‌خواهم بخرم"?"selected":""}>می‌خواهم بخرم</option></select><button class="secondary" onclick="editNote('${esc(g.id)}')">📝 یادداشت</button>`:""}</div></article>`).join("");
  const owned=all.filter(g=>g.owned), done=owned.filter(g=>g.status==="تمام‌شده").length, playing=owned.filter(g=>g.status==="در حال بازی").length;
  document.getElementById("profileText").textContent=`در کتابخانه‌ات ${owned.length} بازی داری؛ ${playing} بازی در حال انجام و ${done} بازی تمام‌شده. ${rated.length?"میانگین امتیازهایی که خودت داده‌ای "+(rated.reduce((s,g)=>s+Number(g.rating),0)/rated.length).toFixed(1)+" از ۱۰ است.":"هنوز به بازی‌ها امتیاز نداده‌ای."}`;
 }
@@ -563,15 +563,15 @@ render();
  }
  function renderAdminList(){
   const q=$("gsAdminSearch").value.trim().toLowerCase();
-  const rows=adminCatalogRows.filter(r=>(String(r.title)+" "+String(r.genre)+" "+String(r.publisher||"")).toLowerCase().includes(q));
-  $("gsAdminList").innerHTML=rows.length?rows.map(r=>'<article class="admin-row"><div class="admin-row-main"><strong>'+esc(r.emoji||"🎮")+' '+esc(r.title)+(r.is_hidden?' <span class="chip">مخفی</span>':'')+'</strong><div class="admin-row-meta">'+esc(r.genre||"ژانر نامشخص")+' • '+esc(r.publisher||"ناشر ثبت نشده")+'<br>وضعیت: '+releaseLabel(r.release_status)+(r.release_date?' • '+esc(r.release_date):'')+' • '+(r.is_builtin?'بازی پایهٔ سایت':'بازی افزوده‌شده توسط مالک')+'</div></div><div class="admin-row-actions"><button data-admin-action="edit" data-id="'+esc(r.id)+'" type="button">✏️ ویرایش</button><button class="secondary" data-admin-action="toggle" data-id="'+esc(r.id)+'" type="button">'+(r.is_hidden?'نمایش':'پنهان‌سازی')+'</button><button class="danger" data-admin-action="delete" data-id="'+esc(r.id)+'" type="button">حذف</button></div></article>').join(""):'<div class="empty">بازی‌ای پیدا نشد.</div>';
+  const rows=adminCatalogRows.filter(r=>(String(r.title)+" "+String(r.genre)+" "+String(r.publisher||"")+" "+String(r.platforms||"")).toLowerCase().includes(q));
+  $("gsAdminList").innerHTML=rows.length?rows.map(r=>'<article class="admin-row"><div class="admin-row-main"><strong>'+esc(r.emoji||"🎮")+' '+esc(r.title)+(r.is_hidden?' <span class="chip">مخفی</span>':'')+'</strong><div class="admin-row-meta">'+esc(r.genre||"ژانر نامشخص")+' • '+esc(r.publisher||"ناشر ثبت نشده")+'<br>پلتفرم: '+esc(r.platforms||"PS5")+'<br>وضعیت: '+releaseLabel(r.release_status)+(r.release_date?' • '+esc(r.release_date):'')+' • '+(r.is_builtin?'بازی پایهٔ سایت':'بازی افزوده‌شده توسط مالک')+'</div></div><div class="admin-row-actions"><button data-admin-action="edit" data-id="'+esc(r.id)+'" type="button">✏️ ویرایش</button><button class="secondary" data-admin-action="toggle" data-id="'+esc(r.id)+'" type="button">'+(r.is_hidden?'نمایش':'پنهان‌سازی')+'</button><button class="danger" data-admin-action="delete" data-id="'+esc(r.id)+'" type="button">حذف</button></div></article>').join(""):'<div class="empty">بازی‌ای پیدا نشد.</div>';
   updateAdminCounts();
  }
  async function loadGlobalCatalog(){
   const {data,error}=await client.from("site_catalog").select("*").order("title");
   if(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
   adminCatalogRows=data||[];
-  seed=adminCatalogRows.filter(r=>!r.is_hidden).map(r=>({id:r.id,title:r.title,genre:r.genre||"ژانر نامشخص",emoji:r.emoji||"🎮",critic:r.critic===null?null:Number(r.critic),publisher:r.publisher||"",releaseDate:r.release_date||"",releaseStatus:r.release_status||"unknown",storeUrl:r.store_url||"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.parse(r.created_at)||Date.now()}));
+  seed=adminCatalogRows.filter(r=>!r.is_hidden).map(r=>({id:r.id,title:r.title,genre:r.genre||"ژانر نامشخص",platforms:r.platforms||"PS5",emoji:r.emoji||"🎮",critic:r.critic===null?null:Number(r.critic),publisher:r.publisher||"",releaseDate:r.release_date||"",releaseStatus:r.release_status||"unknown",storeUrl:r.store_url||"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.parse(r.created_at)||Date.now()}));
   render();renderAdminList();return true;
  }
  window.gamescopePublishRawgResults=async function(futureGames,recentGames){
@@ -600,15 +600,18 @@ render();
     if((!next.publisher||!String(next.publisher).trim())&&names.length)next.publisher=names.join(" • ");
     if((!next.release_date)&&releaseDate)next.release_date=releaseDate;
     if((!next.genre||next.genre==="ژانر نامشخص")&&genre)next.genre=genre;
+    const platformNames=Array.isArray(game.platforms)?game.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"";
+    if((!next.platforms||!String(next.platforms).trim())&&platformNames)next.platforms=platformNames;
     if((next.critic===null||next.critic===undefined)&&typeof game.metacritic==="number")next.critic=Math.round(game.metacritic)/10;
     if((!next.store_url||!String(next.store_url).trim()))next.store_url=storeUrl;
     if(!next.emoji)next.emoji="🎮";
     if(next.release_status!==releaseStatus)next.release_status=releaseStatus;
-    const fields=["publisher","release_date","genre","critic","store_url","emoji","release_status"];
+    const fields=["publisher","release_date","genre","critic","store_url","emoji","release_status","platforms"];
     const changed=fields.some(k=>String(next[k]??"")!==String(existing[k]??""));
     if(changed){next.updated_at=new Date().toISOString();batch.push(next);byId.set(String(next.id),next);byTitle.set(normalizeGameName(next.title),next);updated++;changeItems.push({kind:"base",title:next.title,text:"اطلاعات کاتالوگ به‌روزرسانی شد"+(next.publisher?" • شرکت: "+next.publisher:"")+" • وضعیت: "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"نامشخص")});}
    }else{
-    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl,is_hidden:false,is_builtin:false};
+    const platformNames=Array.isArray(game.platforms)?game.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5";
+    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",platforms:platformNames||"PS5",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl,is_hidden:false,is_builtin:false};
     batch.push(next);byId.set(rawId,next);byTitle.set(normalizeGameName(next.title),next);added++;
     changeItems.push({kind:"new",title:next.title,text:"به کاتالوگ عمومی افزوده شد"+(next.publisher?" • شرکت: "+next.publisher:" • اطلاعات شرکت هنوز در RAWG موجود نیست")+" • "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"وضعیت انتشار نامشخص")});
    }
@@ -634,7 +637,7 @@ render();
   return true;
  };
  function clearAdminForm(){
-  adminEditingRecord=null;$("gsAdminEditId").value="";$("gsAdminGameTitle").value="";$("gsAdminGameGenre").value="";
+  adminEditingRecord=null;$("gsAdminEditId").value="";$("gsAdminGameTitle").value="";$("gsAdminGameGenre").value="";$("gsAdminPlatforms").value="PS5";
   $("gsAdminGameEmoji").value="🎮";$("gsAdminGameCritic").value="";$("gsAdminPublisher").value="";
   $("gsAdminReleaseDate").value="";$("gsAdminReleaseStatus").value="unknown";$("gsAdminStoreUrl").value="";
   $("gsAdminSaveGame").textContent="💾 ذخیره در سایت برای همه";$("gsAdminCancelEdit").classList.add("hidden");
@@ -642,7 +645,7 @@ render();
  function startAdminEdit(id){
   const row=adminCatalogRows.find(r=>String(r.id)===String(id));if(!row)return;
   adminEditingRecord=row;$("gsAdminEditId").value=row.id;$("gsAdminGameTitle").value=row.title||"";
-  $("gsAdminGameGenre").value=row.genre||"";$("gsAdminGameEmoji").value=row.emoji||"🎮";$("gsAdminGameCritic").value=row.critic??"";
+  $("gsAdminGameGenre").value=row.genre||"";$("gsAdminPlatforms").value=row.platforms||"PS5";$("gsAdminGameEmoji").value=row.emoji||"🎮";$("gsAdminGameCritic").value=row.critic??"";
   $("gsAdminPublisher").value=row.publisher||"";$("gsAdminReleaseDate").value=row.release_date||"";
   $("gsAdminReleaseStatus").value=row.release_status||"unknown";$("gsAdminStoreUrl").value=row.store_url||"";
   $("gsAdminSaveGame").textContent="💾 ذخیرهٔ ویرایش";$("gsAdminCancelEdit").classList.remove("hidden");$("gsAdminGameTitle").focus();
@@ -687,7 +690,7 @@ render();
   if(ct!==""&&(!Number.isFinite(Number(ct))||Number(ct)<0||Number(ct)>10)){adminStatus("امتیاز باید بین صفر تا ده باشد.");return;}
   if(url){try{const u=new URL(url);if(!["http:","https:"].includes(u.protocol))throw Error();}catch(e){adminStatus("لینک فروشگاه باید با https:// یا http:// شروع شود.");return;}}
   const old=adminEditingRecord;
-  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
+  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",platforms:$("gsAdminPlatforms").value.trim()||"PS5",emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
   const b=$("gsAdminSaveGame");b.disabled=true;const {error}=await client.from("site_catalog").upsert(row,{onConflict:"id"});b.disabled=false;
   if(error){adminStatus("ذخیره در پایگاه داده ناموفق بود: "+error.message);return;}
   clearAdminForm();await loadGlobalCatalog();adminStatus(old?"ویرایش برای همه ذخیره شد.":"بازی جدید به کاتالوگ عمومی همه اضافه شد.");
