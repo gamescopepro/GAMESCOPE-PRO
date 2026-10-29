@@ -75,7 +75,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
     <div class="field"><button id="onlineSearchBtn">🔎 جست‌وجو</button></div>
     <div class="field"><button class="secondary" id="onlineBrowseBtn">نمایش همه بازی‌ها</button></div>
     <div class="field full"><button id="onlineUpcomingBtn">🗓️ بازی‌های آیندهٔ PS5 که در PlayStation Store ثبت شده‌اند</button></div>
-    <div class="field full"><button class="secondary" id="onlineRefreshBtn">🔄 بررسی و به‌روزرسانی همهٔ تغییرات</button></div>
+    <div class="field full"><button class="secondary" id="onlineRefreshBtn">🔄 به‌روزرسانی بازی‌ها و گزارش تغییرات</button></div>
   </div>
   <p class="hint">منبع داده: <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">RAWG API</a>. برای استفاده رایگان، شرایط انتساب منبع و محدودیت درخواست‌ها را رعایت کن.</p>
   <div id="onlineStatus" class="hint" role="status" aria-live="polite" style="margin-top:8px"></div>
@@ -282,19 +282,33 @@ async function runFullUpdate({silent=false}={}){
  try{
   setUpdateProgress(1,"۱٪ — شروع بررسی منابع آنلاین");
   setOnlineStatus("در حال بررسی بازی‌های آینده و بازی‌هایی که اخیراً منتشر شده‌اند…");
-  setUpdateProgress(12,"۱۲٪ — دریافت فهرست بازی‌های آیندهٔ PS5");
-  const futureData=await fetchRawgAbsolute(makeUrl({dates:dateOnly(now)+","+dateOnly(future),ordering:"released"}));
-  futureGames=Array.isArray(futureData.results)?futureData.results:[];
+  // دریافت چند صفحه از هر دسته تا گزارش فقط به یک صفحهٔ اول محدود نباشد.
+  async function fetchCategoryPages(params, startPct, endPct, label){
+    let nextUrl=makeUrl(params), items=[], pages=0;
+    while(nextUrl && pages<3){
+      const data=await fetchRawgAbsolute(nextUrl);
+      if(Array.isArray(data.results)) items.push(...data.results);
+      nextUrl=data.next||null;
+      pages++;
+      const pct=startPct+(endPct-startPct)*(pages/3);
+      setUpdateProgress(Math.min(endPct,pct),Math.round(Math.min(endPct,pct)).toLocaleString("fa-IR")+"٪ — "+label+" (صفحه "+pages+" از حداکثر ۳)");
+      if(!nextUrl)break;
+    }
+    return items;
+  }
+  futureGames=await fetchCategoryPages({dates:dateOnly(now)+","+dateOnly(future),ordering:"released"},12,43,"دریافت بازی‌های آیندهٔ PS5");
   setUpdateProgress(48,"۴۸٪ — بررسی بازی‌های منتشرشدهٔ اخیر");
-  const recentData=await fetchRawgAbsolute(makeUrl({dates:dateOnly(recentStart)+","+dateOnly(now),ordering:"-released"}));
-  recentGames=Array.isArray(recentData.results)?recentData.results:[];
-  setUpdateProgress(78,"۷۸٪ — مقایسه با آخرین بررسی ذخیره‌شده");
+  recentGames=await fetchCategoryPages({dates:dateOnly(recentStart)+","+dateOnly(now),ordering:"-released"},50,77,"دریافت بازی‌های منتشرشدهٔ اخیر");
+  // حذف تکراری‌ها در صورت تکرار یک عنوان بین صفحات.
+  futureGames=[...new Map(futureGames.map(g=>[String(g.id),g])).values()];
+  recentGames=[...new Map(recentGames.map(g=>[String(g.id),g])).values()];
+  setUpdateProgress(78,"۷۸٪ — مقایسهٔ نتایج دریافت‌شده با بررسی قبلی");
   const currentFuture=futureGames.map(g=>String(g.id));
   const currentRecent=recentGames.map(g=>String(g.id));
   if(previous){
     const oldFuture=new Set(previous.future||[]),oldRecent=new Set(previous.recent||[]);
-    futureGames.filter(g=>!oldFuture.has(String(g.id))).forEach(g=>changes.push({kind:"new",title:g.name,text:"بازی آیندهٔ PS5 شناسایی شد • تاریخ انتشار: "+(g.released||"نامشخص")}));
-    recentGames.filter(g=>!oldRecent.has(String(g.id))).forEach(g=>changes.push({kind:"new",title:g.name,text:"در فهرست بازی‌های منتشرشدهٔ ۴۵ روز اخیر دیده شد • تاریخ: "+(g.released||"نامشخص")}));
+    futureGames.filter(g=>!oldFuture.has(String(g.id))).forEach(g=>changes.push({kind:"new",title:g.name,text:"در نتایج آنلاین این بررسی دیده شد • تاریخ انتشار ثبت‌شده: "+(g.released||"نامشخص")}));
+    recentGames.filter(g=>!oldRecent.has(String(g.id))).forEach(g=>changes.push({kind:"new",title:g.name,text:"در نتایج آنلاین بازی‌های منتشرشدهٔ اخیر دیده شد • تاریخ: "+(g.released||"نامشخص")}));
   }else{
     changes.push(...futureGames.slice(0,8).map(g=>({kind:"base",title:g.name,text:"در فهرست فعلی بازی‌های آینده دیده شد • تاریخ انتشار: "+(g.released||"نامشخص")})));
     changes.push(...recentGames.slice(0,8).map(g=>({kind:"base",title:g.name,text:"در فهرست بازی‌های منتشرشدهٔ اخیر دیده شد • تاریخ: "+(g.released||"نامشخص")})));
@@ -306,7 +320,7 @@ async function runFullUpdate({silent=false}={}){
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults(futureGames,false);
   document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
-  const note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" بازی منتشرشدهٔ اخیر از RAWG دریافت شد. "+(previous?"تغییرات با بررسی قبلی مقایسه شد.":"این اولین بررسی است؛ فهرست فعلی به‌عنوان مبنا ذخیره شد.");
+  const note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۳ صفحه برای هر دسته). "+(previous?"نتایج با بررسی قبلی مقایسه شدند؛ موارد تازه یعنی مواردی که در نتایج قبلیِ دریافت‌شده نبودند.":"این اولین بررسی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این گزارش کل فروشگاه PlayStation را تضمین نمی‌کند.";
   updateLogHtml(changes,now,note);
   setUpdateProgress(100,"۱۰۰٪ — به‌روزرسانی تمام شد");
   setOnlineStatus(note+" اطلاعات فقط به اندازهٔ پوشش و به‌روزرسانی منبع کامل است.");
@@ -318,9 +332,13 @@ async function runFullUpdate({silent=false}={}){
 }
 document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFullUpdate());
 // Refresh the upcoming PS5 list on page open and periodically while this tab remains open.
+let lastAutoRefreshAt=0;
 async function autoRefreshUpcoming(){
  const key=getRawgKey();
  if(!key){setOnlineStatus("برای دریافت آنلاین و خودکار، کلید RAWG را وارد و ذخیره کن.");return}
+ // جلوگیری از درخواست‌های تکراری هنگام جابه‌جایی بین تب‌ها یا برگشت اینترنت.
+ if(Date.now()-lastAutoRefreshAt<10*60*1000 || onlineBusy)return;
+ lastAutoRefreshAt=Date.now();
  onlineUpcomingMode=true;
  await runFullUpdate({silent:true});
 }
