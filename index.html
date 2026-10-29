@@ -270,11 +270,12 @@ function companyNames(g){
  return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
 }
 function rawgGameObject(g){
- return {id:"rawg_"+g.id,title:g.name||"بازی بدون نام",genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",platforms:Array.isArray(g.platforms)&&g.platforms.length?g.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown",storeUrl:"https://store.playstation.com/en-us/search/"+encodeURIComponent(g.name||""),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.id,cover:g.background_image||""}
+ const gameTitle=g.name||"بازی بدون نام",customId=g.gamescopeOfficial?"official_"+String(g.slug||"game").replace(/[^a-z0-9_-]/gi,"-"):"rawg_"+g.id;
+ return {id:customId,title:gameTitle,genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",platforms:Array.isArray(g.platforms)&&g.platforms.length?g.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown",storeUrl:g.storeUrl||"https://store.playstation.com/en-us/search/"+encodeURIComponent(gameTitle),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.gamescopeOfficial?null:g.id,cover:g.background_image||""}
 }
 function addRawgGame(id){
  const g=onlineCache.get(String(id));if(!g){toast("اطلاعات بازی در دسترس نیست");return}
- const obj=rawgGameObject(g),existing=userGames.find(x=>String(x.id)===String(obj.id));
+ const obj=rawgGameObject(g),existing=userGames.find(x=>String(x.id)===String(obj.id)||normalizeGameName(x.title)===normalizeGameName(obj.title));
  if(existing){existing.owned=true;saveObj(existing)}else saveObj(obj);
  toast("بازی به کتابخانه اضافه شد")
 }
@@ -287,7 +288,7 @@ function renderOnlineResults(results,append=false){
   const imageUrl=typeof g.background_image==="string"?g.background_image:"";
   const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">':"🎮";
   const release=esc(g.released||"تاریخ انتشار نامشخص"),rating=Number.isFinite(Number(g.rating))&&g.rating?Number(g.rating).toFixed(1):"—";
-  const storeLink='https://store.playstation.com/en-us/search/'+encodeURIComponent(g.name||'');
+  const storeLink=g.storeUrl||'https://store.playstation.com/en-us/search/'+encodeURIComponent(g.name||'');
   const companies=[...(g.publishers||[]).map(x=>x.name),...(g.developers||[]).map(x=>x.name)].filter(Boolean);
   const company=[...new Set(companies)].slice(0,2).join(' • ')||'شرکت سازنده/ناشر در RAWG ثبت نشده';
   const companyInitial=esc((companies[0]||'🎮').slice(0,1).toUpperCase());
@@ -317,14 +318,92 @@ async function enrichOnlineCompanies(results){
 function normalizeGameName(value){
  return String(value||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," ");
 }
+const GAME_SEARCH_ALIASES=[
+ {canonical:"Phantom Blade Zero",aliases:["phantom blade zero","phantom blade ziro","phantombladezero","phantom blade: zero","phantomblade ziro","phantom blade 0","phantom blade zer0"]},
+ {canonical:"Grand Theft Auto VI",aliases:["gta vi","gta 6","gta6","grand theft auto 6","grand theft auto vi"]},
+ {canonical:"EA SPORTS FC 27",aliases:["fc27","fc 27","ea sports fc27","ea sports fc 27","fifa 27","fifa27"]}
+];
+function canonicalKnownGameQuery(query){
+ const normalized=normalizeGameName(query);
+ for(const entry of GAME_SEARCH_ALIASES){
+  if(entry.aliases.some(alias=>normalizeGameName(alias)===normalized))return entry.canonical;
+ }
+ // Catch small spelling mistakes in the last word without allowing arbitrary unrelated results.
+ const parts=normalized.split(" ").filter(Boolean);
+ if(parts.length>=2&&parts.includes("phantom")&&parts.includes("blade")){
+  const tail=parts.filter(x=>x!=="phantom"&&x!=="blade").join("");
+  if(!tail||tail==="0"||tail==="zer0"||tail==="ziro"||tail==="zero"||levenshteinDistance(tail,"zero")<=1)return "Phantom Blade Zero";
+ }
+ return "";
+}
+function levenshteinDistance(a,b){
+ a=String(a||"");b=String(b||"");
+ if(a.length>b.length)[a,b]=[b,a];
+ let prev=Array.from({length:a.length+1},(_,i)=>i);
+ for(let j=1;j<=b.length;j++){
+  const cur=[j];
+  for(let i=1;i<=a.length;i++)cur[i]=Math.min(cur[i-1]+1,prev[i]+1,prev[i-1]+(a[i-1]===b[j-1]?0:1));
+  prev=cur;
+ }
+ return prev[a.length];
+}
+function phantomBladeZeroOfficialRecord(){
+ return {
+  id:-20261029,slug:"phantom-blade-zero",gamescopeOfficial:true,name:"Phantom Blade Zero",
+  released:"2026-10-29",rating:null,metacritic:null,background_image:"",
+  genres:[{name:"Action"}],
+  platforms:[{platform:{name:"PlayStation 5"}}],
+  publishers:[{name:"S-GAME Publishing"}],developers:[{name:"S-Game"}],
+  storeUrl:"https://store.playstation.com/en-us/product/UB2134-PPSA34579_00-0622032276386943/",
+  officialUrl:"https://www.playstation.com/en-us/games/phantom-blade-zero/"
+ };
+}
 function searchVariants(query){
- const q=String(query||"").trim(), n=normalizeGameName(q);
+ const q=String(query||"").trim();
  if(!q)return [""];
- const variants=[q];
+ const variants=[q],canonical=canonicalKnownGameQuery(q);
+ if(canonical){
+  variants.push(canonical);
+  if(canonical==="Phantom Blade Zero")variants.push("Phantom Blade: Zero","phantom-blade-zero");
+  if(canonical==="Grand Theft Auto VI")variants.push("GTA 6","GTA VI");
+  if(canonical==="EA SPORTS FC 27")variants.push("FC 27","FIFA 27");
+ }
  if(/\bgta\s*(vi|6)\b|\bgrand theft auto\s*(vi|6)\b/i.test(q)) variants.push("Grand Theft Auto VI","GTA 6","GTA VI");
  if(/\bfc\s*27\b|\bea sports fc\s*27\b|\bfifa\s*27\b/i.test(q)) variants.push("EA SPORTS FC 27","FC 27","FIFA 27");
  if(/^fc\s*\d+$/i.test(q)) variants.push("EA SPORTS "+q);
  return [...new Set(variants)];
+}
+function scoreGameSearchResult(gameName,query,variants){
+ const name=normalizeGameName(gameName);
+ if(!name)return 1000;
+ const targets=[...new Set((variants||[query]).map(normalizeGameName).filter(Boolean))];
+ for(let i=0;i<targets.length;i++){
+  const t=targets[i];
+  if(name===t)return i===0?0:1+i;
+ }
+ for(let i=0;i<targets.length;i++){
+  const t=targets[i];
+  if(name.startsWith(t)||t.startsWith(name))return 10+i;
+  if(name.includes(t)||t.includes(name))return 20+i;
+ }
+ const nameTokens=name.split(" "), scored=[];
+ for(const target of targets){
+  const qTokens=target.split(" ").filter(Boolean);
+  if(!qTokens.length)continue;
+  let score=0,matched=0;
+  for(const token of qTokens){
+   if(nameTokens.includes(token)){matched++;continue}
+   let best=99;
+   for(const candidate of nameTokens){
+    const dist=levenshteinDistance(token,candidate);
+    const allowance=token.length>=7?2:token.length>=4?1:0;
+    if(dist<=allowance)best=Math.min(best,dist);
+   }
+   if(best<99){matched++;score+=best*3}
+  }
+  if(matched===qTokens.length)scored.push(30+score+Math.abs(nameTokens.length-qTokens.length));
+ }
+ return scored.length?Math.min(...scored):1000;
 }
 async function fetchRawgAbsolute(url){
  const u=new URL(url);u.searchParams.set("key",getRawgKey());
@@ -333,59 +412,116 @@ async function fetchRawgAbsolute(url){
 }
 function cleanSearchIntent(query){
  let q=String(query||"").trim();
- // Understand common Persian requests for upcoming PS5 releases.
- if(/(بازی.?های?\s*(آینده|جدید|در\s*راه)|هنوز\s*نیومده|منتشر\s*نشده|به\s*زودی|coming\s*soon|upcoming|pre.?order)/i.test(q)){
+ // Only keep the upcoming-release filters for an explicit upcoming request.
+ // Normal game searches must never inherit filters from the previous button click.
+ const upcomingPattern=/(بازی.?های?\s*(آینده|جدید|در\s*راه)|هنوز\s*نیومده|منتشر\s*نشده|به\s*زودی|coming\s*soon|upcoming|pre.?order)/i;
+ if(upcomingPattern.test(q)){
   onlineUpcomingMode=true;
   q=q.replace(/بازی.?های?\s*(آینده|جدید|در\s*راه)|هنوز\s*نیومده|منتشر\s*نشده|به\s*زودی|coming\s*soon|upcoming|pre.?order/ig,"").replace(/(برای\s*)?ps\s*5|پلی\s*استیشن\s*5/ig,"").trim();
+ }else if(q){
+  onlineUpcomingMode=false;
  }
  return q;
 }
 async function loadOnlineGames({query="",append=false}={}){
  if(onlineBusy)return;
  if(!append)query=cleanSearchIntent(query);
- const key=getRawgKey();if(!key){setOnlineStatus("ابتدا کلید API را وارد و با دکمه «بررسی و ذخیره کلید» ذخیره کن.");return}
- onlineBusy=true;document.getElementById("onlineResults").classList.remove("hidden");document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";const more=document.getElementById("onlineMore");more.disabled=true;setOnlineStatus(append?"در حال دریافت صفحه بعدی…":"در حال جست‌وجوی RAWG؛ نتایج دقیق‌تر بررسی می‌شوند…");
+ const originalQuery=String(query||"").trim();
+ const canonical=canonicalKnownGameQuery(originalQuery);
+ const isPhantomSearch=canonical==="Phantom Blade Zero";
+ const officialPhantom=phantomBladeZeroOfficialRecord();
+ const key=getRawgKey();
+ if(!key&&!isPhantomSearch){setOnlineStatus("ابتدا کلید API را وارد و با دکمه «بررسی و ذخیره کلید» ذخیره کن.");return}
+ onlineBusy=true;
+ document.getElementById("onlineResults").classList.remove("hidden");
+ document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
+ const more=document.getElementById("onlineMore");more.disabled=true;
+ setOnlineStatus(append?"در حال دریافت صفحه بعدی…":"در حال جست‌وجوی دقیق بازی‌ها و نام‌های جایگزین…");
  try{
   let results=[],reportedCount=0;
   if(append){
    const nextUrl=onlineNextQueue.shift();
    if(!nextUrl){onlineNext=null;renderOnlineResults([],true);return}
-   const data=await fetchRawgAbsolute(nextUrl);results=Array.isArray(data.results)?data.results:[];reportedCount=Number(data.count||0);if(data.next)onlineNextQueue.push(data.next);onlinePage++;
+   const data=await fetchRawgAbsolute(nextUrl);
+   results=Array.isArray(data.results)?data.results:[];
+   reportedCount=Number(data.count||0);
+   if(data.next)onlineNextQueue.push(data.next);
+   onlinePage++;
   }else{
-   onlinePage=1;onlineNextQueue=[];onlineLastQuery=query.trim();
-   const variants=searchVariants(query);
+   onlinePage=1;onlineNextQueue=[];onlineLastQuery=originalQuery;
+   const variants=searchVariants(originalQuery);
    const allResults=new Map();let primaryData=null;
+   // Use RAWG's fuzzy default on the original spelling, then also search corrected aliases.
+   // search_precise=true is intentionally omitted: it was excluding misspelled user queries.
    for(let i=0;i<variants.length;i++){
-    const variant=variants[i],params={page:1,page_size:40};
+    const variant=variants[i],params={page:1,page_size:40,ordering:"-added"};
     if(onlineUpcomingMode){
      const now=new Date(),end=new Date(now);end.setFullYear(end.getFullYear()+3);
      const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
      params.dates=iso(now)+","+iso(end);params.platforms="187";params.stores="3";params.ordering="released";
-    }else params.ordering="-added";
-    if(variant){params.search=variant;params.search_precise="true";}
+    }
+    if(variant)params.search=variant;
     let data;
-    try{data=await rawgFetch("/games",params)}catch(err){if(i===0)throw err;continue}
+    try{data=await rawgFetch("/games",params)}
+    catch(err){if(i===0)throw err;continue}
     if(i===0)primaryData=data;
     if(data.next)onlineNextQueue.push(data.next);
-    for(const g of (Array.isArray(data.results)?data.results:[]))if(!allResults.has(String(g.id)))allResults.set(String(g.id),g);
+    for(const game of (Array.isArray(data.results)?data.results:[])){
+     const id=String(game.id);
+     const prior=allResults.get(id);
+     if(!prior||scoreGameSearchResult(game.name,originalQuery,variants)<scoreGameSearchResult(prior.name,originalQuery,variants))allResults.set(id,game);
+    }
    }
-   results=[...allResults.values()];reportedCount=Number(primaryData&&primaryData.count||results.length);
-   if(query.trim()){
-    const targets=searchVariants(query).map(normalizeGameName);
-    results.sort((a,b)=>{
-     const an=normalizeGameName(a.name),bn=normalizeGameName(b.name);
-     const score=n=>{const exact=targets.indexOf(n);if(exact>=0)return exact;const prefix=targets.findIndex(t=>t&&n.startsWith(t));if(prefix>=0)return 10+prefix;const partial=targets.findIndex(t=>t&&n.includes(t));return partial>=0?20+partial:100;};
-     return score(an)-score(bn)||(Number(b.added||0)-Number(a.added||0));
-    });
+   results=[...allResults.values()];
+   reportedCount=Number(primaryData&&primaryData.count||results.length);
+   if(originalQuery&&!onlineUpcomingMode){
+    const scored=results.map(game=>({...game,__searchScore:scoreGameSearchResult(game.name,originalQuery,variants)}))
+      .filter(game=>game.__searchScore<1000)
+      .sort((a,b)=>a.__searchScore-b.__searchScore||(Number(b.added||0)-Number(a.added||0)));
+    results=scored.map(({__searchScore,...game})=>game);
    }
   }
+
+  if(isPhantomSearch&&!append){
+   // Verified fallback is based on the official PlayStation listing and remains available
+   // even if RAWG returns no result or the visitor has not configured a RAWG API key.
+   const actual=results.find(game=>normalizeGameName(game.name)==="phantom blade zero");
+   if(actual){
+    results=[{
+     ...actual,
+     name:"Phantom Blade Zero",
+     released:actual.released||officialPhantom.released,
+     genres:actual.genres&&actual.genres.length?actual.genres:officialPhantom.genres,
+     platforms:actual.platforms&&actual.platforms.length?actual.platforms:officialPhantom.platforms,
+     publishers:actual.publishers&&actual.publishers.length?actual.publishers:officialPhantom.publishers,
+     developers:actual.developers&&actual.developers.length?actual.developers:officialPhantom.developers,
+     storeUrl:officialPhantom.storeUrl,
+     officialUrl:officialPhantom.officialUrl
+    }];
+   }else results=[officialPhantom];
+   reportedCount=Math.max(1,reportedCount);
+   onlineNextQueue=[];
+  }else if(originalQuery&&!append&&!onlineUpcomingMode){
+   // Do not fill search results with unrelated popular games when similarity is poor.
+   results=results.slice(0,40);
+  }
+
   onlineNext=onlineNextQueue.length>0?onlineNextQueue[0]:null;
   renderOnlineResults(results,append);
   const total=reportedCount.toLocaleString("fa-IR");
-  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ PS5 با فیلتر PlayStation Store در RAWG • ":"")+(query.trim()?"نتایج جست‌وجو برای «"+query.trim()+"»؛ عبارت‌های نزدیک هم بررسی شدند. ":(onlineUpcomingMode?"":"همهٔ پلتفرم‌ها • "))+"تعداد گزارش‌شده توسط RAWG: "+total+" • صفحهٔ بارگذاری‌شده: "+onlinePage.toLocaleString("fa-IR")+" • این صفحه: "+results.length.toLocaleString("fa-IR")+" بازی");
-  if(!results.length&&!append)document.getElementById("onlineResults").innerHTML='<div class="empty" style="grid-column:1/-1">نتیجه‌ای پیدا نشد. برای بازی‌های تازه یا منتشرنشده، نام رسمی و نام کوتاه را جداگانه امتحان کن؛ اگر در RAWG ثبت نشده باشد، جست‌وجو نمی‌تواند آن را بسازد.</div>';
- }catch(err){setOnlineStatus("خطا: "+(err.message||"ارتباط با RAWG برقرار نشد.")+" اتصال اینترنت و کلید را بررسی کن.")}
- finally{onlineBusy=false;more.disabled=false}
+  const correction=isPhantomSearch?" نام جست‌وجو به «Phantom Blade Zero» اصلاح شد؛ عنوان رسمی در PlayStation تأیید شده است. ":"";
+  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ PS5 با فیلتر PlayStation Store در RAWG • ":"")+
+   (originalQuery?"نتایج جست‌وجو برای «"+originalQuery+"». "+correction:"")+
+   (originalQuery?"":"همهٔ پلتفرم‌ها • ")+
+   "تعداد گزارش‌شده توسط RAWG: "+total+" • بازی‌های نمایش‌داده‌شده: "+results.length.toLocaleString("fa-IR"));
+  if(!results.length&&!append)document.getElementById("onlineResults").innerHTML='<div class="empty" style="grid-column:1/-1">نتیجهٔ دقیقی پیدا نشد. نام رسمی، املای جایگزین یا بخشی از نام بازی را امتحان کن. برای عناوینی که در RAWG ثبت نشده‌اند، سایت نمی‌تواند اطلاعات کامل را از این منبع دریافت کند.</div>';
+ }catch(err){
+  // Preserve the official Phantom Blade Zero result even if RAWG is down.
+  if(isPhantomSearch&&!append){
+   renderOnlineResults([officialPhantom],false);
+   setOnlineStatus("Phantom Blade Zero از صفحهٔ رسمی PlayStation نمایش داده شد. سرویس RAWG فعلاً در دسترس نیست؛ اطلاعات رسمی و لینک فروشگاه همچنان موجودند.");
+  }else setOnlineStatus("خطا: "+(err.message||"ارتباط با RAWG برقرار نشد.")+" اتصال اینترنت و کلید را بررسی کن.");
+ }finally{onlineBusy=false;more.disabled=false}
 }
 document.getElementById("saveKey").addEventListener("click",async()=>{
  const key=document.getElementById("rawgKey").value.trim();if(!key){setOnlineStatus("لطفاً ابتدا کلید API را وارد کن.");return}
@@ -403,6 +539,7 @@ document.getElementById("onlineToggle").addEventListener("click",()=>{
  if(!isHidden&&!box.children.length)loadOnlineGames({query:""});
 });
 document.getElementById("onlineSearchBtn").addEventListener("click",()=>loadOnlineGames({query:document.getElementById("onlineSearch").value.trim()}));
+document.getElementById("onlineSearch").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();loadOnlineGames({query:document.getElementById("onlineSearch").value.trim()})}});
 document.getElementById("onlineBrowseBtn").addEventListener("click",()=>{onlineUpcomingMode=false;document.getElementById("onlineSearch").value="";loadOnlineGames({query:""})});
 document.getElementById("onlineUpcomingBtn").addEventListener("click",()=>{onlineUpcomingMode=true;document.getElementById("onlineSearch").value="";loadOnlineGames({query:""})});
 
