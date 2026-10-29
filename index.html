@@ -159,7 +159,7 @@ let filter="all", query="";
 let seed=catalog.map((x,i)=>({id:"seed"+i,title:x[0],genre:x[1],emoji:x[2],critic:x[3],publisher:"",releaseDate:"",releaseStatus:"unknown",storeUrl:"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:i}));
 function allGames(){return seed.map(g=>{const u=userGames.find(x=>String(x.id)===String(g.id));return u?{...g,owned:!!u.owned,fav:!!u.fav,status:u.status||g.status||"در فهرست علاقه‌مندی",rating:u.rating===undefined?g.rating:u.rating,note:typeof u.note==="string"?u.note:(g.note||""),created:u.created||g.created}:({...g})}).concat(userGames.filter(u=>!String(u.id).startsWith("seed")&&!String(u.id).startsWith("site_")&&!seed.some(g=>String(g.id)===String(u.id))))}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(userGames));return true}catch(e){toast("ذخیره‌سازی مرورگر انجام نشد؛ فضای ذخیره‌سازی یا تنظیمات حریم خصوصی را بررسی کن");return false}}
-function saveObj(g){const i=userGames.findIndex(x=>x.id===g.id);if(i>=0)userGames[i]=g;else userGames.push(g);persist();render();if(window.gamescopeSyncGame)window.gamescopeSyncGame(g)}
+function saveObj(g){g.updated=Date.now();const i=userGames.findIndex(x=>x.id===g.id);if(i>=0)userGames[i]=g;else userGames.push(g);persist();render();if(window.gamescopeSyncGame)window.gamescopeSyncGame(g)}
 function getGame(id){return allGames().find(g=>String(g.id)===String(id))}
 function toast(t){let el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2300)}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -712,16 +712,29 @@ render();
   if(!currentUser||syncing)return;syncing=true;
   try{
    const {data,error}=await client.from("user_games").select("*").eq("user_id",currentUser.id);if(error)throw error;
-   const cloud=(data||[]).map(r=>({id:r.game_id,title:r.game_title,genre:"ژانر نامشخص",emoji:"🎮",owned:!!r.in_library,fav:!!r.is_favorite,status:"در فهرست علاقه‌مندی",rating:r.rating==null?null:Number(r.rating),note:r.note||"",created:Date.parse(r.created_at)||Date.now()}));
-   const local=JSON.parse(localStorage.getItem("sadra_pshub_v1")||"[]"), map=new Map(cloud.map(g=>[String(g.id),g]));
-   local.forEach(g=>{if(!map.has(String(g.id)))map.set(String(g.id),g)});
+   const cloud=(data||[]).map(r=>({id:r.game_id,title:r.game_title,genre:r.game_genre||"ژانر نامشخص",emoji:r.game_emoji||"🎮",critic:r.game_critic==null?null:Number(r.game_critic),cover:r.game_cover||"",platforms:r.game_platforms||"",publisher:r.game_publisher||"",releaseDate:r.game_release_date||"",releaseStatus:r.game_release_status||"unknown",storeUrl:r.game_store_url||"",owned:!!r.in_library,fav:!!r.is_favorite,status:r.game_status||"در فهرست علاقه‌مندی",rating:r.rating==null?null:Number(r.rating),note:r.note||"",created:r.game_created||Date.parse(r.created_at)||Date.now(),updated:Date.parse(r.updated_at)||0}));
+   const local=JSON.parse(localStorage.getItem("sadra_pshub_v1")||"[]"), map=new Map(cloud.map(g=>[String(g.id),g])), remoteRows=new Map((data||[]).map(r=>[String(r.game_id),r]));
+   local.forEach(g=>{
+    const key=String(g.id);if(!map.has(key)){map.set(key,g);return}
+    const remote=map.get(key),raw=remoteRows.get(key),localNewer=Number(g.updated||0)>(Date.parse(raw?.updated_at)||0);
+    map.set(key,{...g,...remote,
+     owned:localNewer?!!g.owned:remote.owned,fav:localNewer?!!g.fav:remote.fav,
+     status:localNewer?g.status:(raw?.game_status?remote.status:(g.status||remote.status)),
+     rating:localNewer?g.rating:remote.rating,note:localNewer?g.note:remote.note,
+     genre:raw?.game_genre?remote.genre:(g.genre||remote.genre),emoji:raw?.game_emoji?remote.emoji:(g.emoji||remote.emoji),
+     critic:raw?.game_critic!=null?remote.critic:(g.critic??remote.critic),cover:raw?.game_cover?remote.cover:(g.cover||remote.cover),
+     platforms:raw?.game_platforms?remote.platforms:(g.platforms||remote.platforms),publisher:raw?.game_publisher?remote.publisher:(g.publisher||remote.publisher),
+     releaseDate:raw?.game_release_date?remote.releaseDate:(g.releaseDate||remote.releaseDate),releaseStatus:raw?.game_release_status?remote.releaseStatus:(g.releaseStatus||remote.releaseStatus),
+     storeUrl:raw?.game_store_url?remote.storeUrl:(g.storeUrl||remote.storeUrl),created:raw?.game_created!=null?remote.created:(g.created||remote.created),updated:Math.max(Number(g.updated||0),Number(remote.updated||0))
+    });
+   });
    window.__gamescopeCloudLoading=true;localStorage.setItem("sadra_pshub_v1",JSON.stringify([...map.values()]));window.__gamescopeCloudLoading=false;
    if(window.gamescopeReload)window.gamescopeReload();say("حساب متصل است؛ اطلاعات ابری بارگذاری شد.");
   }catch(e){window.__gamescopeCloudLoading=false;say("خطا در دریافت اطلاعات ابری: "+(e.message||"دسترسی ناموفق"))}finally{syncing=false}
  }
  window.gamescopeSyncGame=async g=>{
   if(!currentUser||window.__gamescopeCloudLoading||!g)return;
-  const p={user_id:currentUser.id,game_id:String(g.id),game_title:String(g.title||"بازی"),in_library:!!g.owned,is_favorite:!!g.fav,rating:g.rating==null||g.rating===""?null:Number(g.rating),note:String(g.note||"").slice(0,3000),updated_at:new Date().toISOString()};
+  const p={user_id:currentUser.id,game_id:String(g.id),game_title:String(g.title||"بازی"),in_library:!!g.owned,is_favorite:!!g.fav,rating:g.rating==null||g.rating===""?null:Number(g.rating),note:String(g.note||"").slice(0,3000),game_status:String(g.status||"در فهرست علاقه‌مندی"),game_genre:String(g.genre||"ژانر نامشخص"),game_emoji:String(g.emoji||"🎮"),game_critic:g.critic==null||g.critic===""?null:Number(g.critic),game_cover:String(g.cover||""),game_platforms:String(g.platforms||""),game_publisher:String(g.publisher||""),game_release_date:g.releaseDate||null,game_release_status:String(g.releaseStatus||"unknown"),game_store_url:String(g.storeUrl||""),game_created:Number(g.created||Date.now()),updated_at:new Date().toISOString()};
   const {error}=await client.from("user_games").upsert(p,{onConflict:"user_id,game_id"});if(error)say("ذخیره محلی انجام شد، اما همگام‌سازی ابری خطا داد: "+error.message);
  };
  $("gsOwnerLogin").onclick=async()=>{
