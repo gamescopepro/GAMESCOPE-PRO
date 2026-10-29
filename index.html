@@ -998,122 +998,174 @@ render();
 
 <script>
 (function(){
- // Full-page UI localization for every language in the selector. Translations are cached locally.
- const CACHE_KEY="gamescope_ui_translations_v2";
- const separator="ZXQGSSEP9BOUNDARYQXZ";
+ // Batch translation engine with a bounded request queue, resilient segment parsing,
+ // local cache, and MutationObserver support for newly-rendered UI.
+ const CACHE_KEY="gamescope_ui_translations_v3";
  const origins=new Map(), attrOrigins=new Map();
- let activeLang="fa", revision=0, observer=null, busy=false, pendingTimer=0;
+ let activeLang="fa", revision=0, observer=null, pendingTimer=0;
  let cache={};
  try{cache=JSON.parse(localStorage.getItem(CACHE_KEY)||"{}")||{}}catch(e){cache={}}
  const codeMap={zh:"zh-CN",fil:"tl",he:"iw"};
  const excluded="#gsWelcome,#gsSettingsEmail,#profileText,.brand h1,.logo,.card h4,#onlineResults h4,.admin-row strong,script,style,noscript,textarea,input,code,pre,[contenteditable='true'],[data-no-translate]";
+ const SEP_A="⟦GSSEG";
+ const SEP_B="###GSCUT";
  function langCode(lang){return codeMap[lang]||lang||"en"}
  function isExcluded(el){
   if(!el||!el.closest)return true;
   if(el.closest(excluded))return true;
-  const langSelect=el.closest("#gsWelcomeLanguage,#gsSettingsLanguage");
-  if(langSelect)return true;
+  if(el.closest("#gsWelcomeLanguage,#gsSettingsLanguage"))return true;
   return false;
  }
  function textEligible(node){
   if(!node||node.nodeType!==Node.TEXT_NODE||!node.parentElement||isExcluded(node.parentElement))return false;
   const value=node.nodeValue||"";
-  if(!value.trim()||value.trim().length>320||/@|https?:\/\/|www\./i.test(value))return false;
+  if(!value.trim()||value.trim().length>1200||/@|https?:\/\/|www\./i.test(value))return false;
   return true;
  }
  function attrEligible(el,attr){
   if(!el||isExcluded(el))return false;
-  if(el.matches("#gsWelcomeLanguage,#gsSettingsLanguage"))return false;
   const value=el.getAttribute(attr)||"";
-  return !!value.trim()&&value.length<240&&!/@|https?:\/\/|www\./i.test(value);
+  return !!value.trim()&&value.length<320&&!/@|https?:\/\/|www\./i.test(value);
  }
- function rememberText(node){if(!origins.has(node))origins.set(node,node.nodeValue)}
- function rememberAttr(el,attr){const key=el.getAttribute("data-gs-i18n-node")||"";let rec=attrOrigins.get(el);if(!rec){rec={};attrOrigins.set(el,rec)}if(!(attr in rec))rec[attr]=el.getAttribute(attr)}
  function cacheKey(lang,text){return lang+"§"+text}
  function saveCache(){
-  try{const keys=Object.keys(cache);if(keys.length>2600){for(const k of keys.slice(0,keys.length-2400))delete cache[k]}localStorage.setItem(CACHE_KEY,JSON.stringify(cache))}catch(e){}
+  try{
+   const keys=Object.keys(cache);
+   if(keys.length>6000)for(const k of keys.slice(0,keys.length-5000))delete cache[k];
+   localStorage.setItem(CACHE_KEY,JSON.stringify(cache));
+  }catch(e){}
  }
  function parseResponse(data){
   if(!Array.isArray(data)||!Array.isArray(data[0]))throw new Error("Unexpected translation response");
   return data[0].map(part=>Array.isArray(part)?(part[0]||""):"").join("");
  }
- async function oneTranslation(text,lang){
-  const p=new URLSearchParams({client:"gtx",sl:"auto",tl:langCode(lang),dt:"t",q:text});
-  const response=await fetch("https://translate.googleapis.com/translate_a/single?"+p.toString(),{cache:"force-cache"});
-  if(!response.ok)throw new Error("Translation service unavailable");
+ async function oneTranslation(text,lang,signal){
+  const p=new URLSearchParams({client:"gtx",sl:"fa",tl:langCode(lang),dt:"t",ie:"UTF-8",oe:"UTF-8",q:text});
+  const response=await fetch("https://translate.googleapis.com/translate_a/single?"+p.toString(),{
+   method:"GET",cache:"no-store",signal,headers:{"Accept":"application/json,text/plain,*/*"}
+  });
+  if(!response.ok)throw new Error("Translation service returned "+response.status);
+  const contentType=response.headers.get("content-type")||"";
+  if(!contentType.includes("json"))throw new Error("Translation service did not return JSON");
   return parseResponse(await response.json());
  }
- async function translateBatch(items,lang,run){
-  const joined=items.map((t,i)=>" "+separator+i+"X "+t).join("\n");
-  try{
-   const translated=await oneTranslation(joined,lang);
-   const parts=translated.split(new RegExp(separator+"(\\d+)X"));
-   const byIndex={};
-   for(let i=1;i<parts.length;i+=2)byIndex[Number(parts[i])]=(parts[i+1]||"").trim();
-   if(items.every((_,i)=>typeof byIndex[i]==="string"&&byIndex[i].length>0)){
-    return items.map((_,i)=>byIndex[i]);
+ function splitBatch(translated,items,mode){
+  const regex=mode==="a"?/⟦GSSEG(\d+)⟧/g:/###GSCUT(\d+)###/g;
+  const matches=[...translated.matchAll(regex)];
+  if(matches.length!==items.length)return null;
+  const out=[];
+  for(let i=0;i<matches.length;i++){
+   if(Number(matches[i][1])!==i)return null;
+   const from=matches[i].index+matches[i][0].length;
+   const to=i+1<matches.length?matches[i+1].index:translated.length;
+   const part=translated.slice(from,to).replace(/^\s*[:：\-–]?\s*/,"").trim();
+   if(!part)return null;
+   out.push(part);
+  }
+  return out;
+ }
+ async function requestBatch(items,lang,run){
+  const attempts=[
+   {mode:"a",text:items.map((t,i)=>" "+SEP_A+i+"⟧ "+t).join("\n")},
+   {mode:"b",text:items.map((t,i)=>" "+SEP_B+i+"### "+t).join("\n")}
+  ];
+  for(const attempt of attempts){
+   if(run!==revision)return items;
+   try{
+    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
+    let translated;
+    try{translated=await oneTranslation(attempt.text,lang,controller.signal)}finally{clearTimeout(timer)}
+    if(run!==revision)return items;
+    const parsed=splitBatch(translated,items,attempt.mode);
+    if(parsed)return parsed;
+   }catch(e){}
+  }
+  // Final fallback is strictly limited to the current small chunk. No unbounded fan-out.
+  const results=new Array(items.length);
+  let next=0;
+  async function worker(){
+   while(next<items.length&&run===revision){
+    const index=next++, text=items[index];
+    let value=text;
+    for(let attempt=0;attempt<2&&run===revision;attempt++){
+     try{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+      try{value=await oneTranslation(text,lang,controller.signal)}finally{clearTimeout(timer)}
+      if(value&&value!==text)break;
+     }catch(e){}
+     if(attempt===0)await new Promise(resolve=>setTimeout(resolve,450));
+    }
+    results[index]=String(value||text).trim()||text;
    }
-  }catch(e){}
-  // If the provider changes the separators, retry these few phrases individually.
-  return await Promise.all(items.map(async phrase=>{
-   if(run!==revision)return phrase;
-   try{return await oneTranslation(phrase,lang)}catch(e){return phrase}
-  }));
+  }
+  await Promise.all(Array.from({length:Math.min(2,items.length)},worker));
+  return results.map((value,i)=>value||items[i]);
+ }
+ function makeChunks(texts,maxItems=12,maxChars=760){
+  const chunks=[];let batch=[],size=0;
+  for(const text of texts){
+   const extra=text.length+32;
+   if(batch.length&&(batch.length>=maxItems||size+extra>maxChars)){chunks.push(batch);batch=[];size=0}
+   batch.push(text);size+=extra;
+  }
+  if(batch.length)chunks.push(batch);
+  return chunks;
+ }
+ async function runChunks(chunks,lang,run,onResult){
+  // Two concurrent requests keep initial translation quick without flooding the free endpoint.
+  for(let i=0;i<chunks.length;i+=2){
+   if(run!==revision)return;
+   await Promise.all(chunks.slice(i,i+2).map(async chunk=>{
+    const translated=await requestBatch(chunk,lang,run);
+    if(run!==revision)return;
+    chunk.forEach((text,j)=>onResult(text,String(translated[j]||text).trim()||text));
+   }));
+  }
  }
  async function processNodes(nodes,lang,run){
-  const texts=[], seen=new Set();
+  const unique=[],seen=new Set(),nodeOriginals=[];
   for(const node of nodes){
-   if(!textEligible(node)||origins.has(node))continue;
-   rememberText(node);
-   const original=origins.get(node).trim();
-   const key=cacheKey(lang,original);
-   if(cache[key]){node.nodeValue=(origins.get(node)||"").replace(original,cache[key]);continue}
-   if(!seen.has(original)){seen.add(original);texts.push(original)}
+   if(!textEligible(node))continue;
+   if(!origins.has(node))origins.set(node,node.nodeValue);
+   const original=origins.get(node)||"",trimmed=original.trim();
+   if(!trimmed)continue;
+   nodeOriginals.push({node,original,trimmed});
+   const key=cacheKey(lang,trimmed);
+   if(cache[key])continue;
+   if(!seen.has(trimmed)){seen.add(trimmed);unique.push(trimmed)}
   }
-  const lookup=new Map();
-  const chunks=[];let batch=[],size=0;
-  for(const t of texts){if(batch.length>=5||size+t.length>1200){if(batch.length)chunks.push(batch);batch=[];size=0}batch.push(t);size+=t.length}
-  if(batch.length)chunks.push(batch);
-  for(const chunk of chunks){
-   if(run!==revision)return;
-   let translated=await translateBatch(chunk,lang,run);
-   if(run!==revision)return;
-   chunk.forEach((t,i)=>{const result=(translated[i]||t).trim()||t;lookup.set(t,result);cache[cacheKey(lang,t)]=result});
-  }
+  const chunks=makeChunks(unique);
+  await runChunks(chunks,lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
   if(run!==revision)return;
-  for(const node of nodes){
-   if(!origins.has(node)||!node.isConnected)continue;
-   const original=origins.get(node)||"", trimmed=original.trim();
-   const result=cache[cacheKey(lang,trimmed)]||lookup.get(trimmed);
-   if(result)node.nodeValue=original.replace(trimmed,result);
+  for(const entry of nodeOriginals){
+   if(!entry.node.isConnected)continue;
+   const translated=cache[cacheKey(lang,entry.trimmed)];
+   if(translated)entry.node.nodeValue=entry.original.replace(entry.trimmed,translated);
   }
-  if(texts.length)saveCache();
+  if(unique.length)saveCache();
  }
  async function processAttributes(elements,lang,run){
-  const work=[];
+  const work=[],unique=[],seen=new Set();
   for(const el of elements){
    for(const attr of ["placeholder","title","aria-label"]){
     if(!attrEligible(el,attr))continue;
     if(!attrOrigins.has(el))attrOrigins.set(el,{});
     const record=attrOrigins.get(el);
     if(!(attr in record))record[attr]=el.getAttribute(attr);
-    const original=record[attr], key=cacheKey(lang,original);
-    if(cache[key]){el.setAttribute(attr,cache[key]);continue}
+    const original=record[attr];
+    if(!original)continue;
     work.push({el,attr,original});
+    const key=cacheKey(lang,original);
+    if(!cache[key]&&!seen.has(original)){seen.add(original);unique.push(original)}
    }
   }
-  const unique=[...new Set(work.map(x=>x.original))];
-  const lookup=new Map();
-  const chunks=[];let batch=[],size=0;
-  for(const t of unique){if(batch.length>=5||size+t.length>1000){if(batch.length)chunks.push(batch);batch=[];size=0}batch.push(t);size+=t.length}
-  if(batch.length)chunks.push(batch);
-  for(const chunk of chunks){
-   if(run!==revision)return;
-   const translated=await translateBatch(chunk,lang,run);
-   if(run!==revision)return;
-   chunk.forEach((t,i)=>{const result=(translated[i]||t).trim()||t;lookup.set(t,result);cache[cacheKey(lang,t)]=result});
+  await runChunks(makeChunks(unique,10,650),lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
+  if(run!==revision)return;
+  for(const item of work){
+   if(!item.el.isConnected)continue;
+   const value=cache[cacheKey(lang,item.original)];
+   if(value)item.el.setAttribute(item.attr,value);
   }
-  for(const item of work){if(run!==revision)return;if(item.el.isConnected)item.el.setAttribute(item.attr,cache[cacheKey(lang,item.original)]||lookup.get(item.original)||item.original)}
   if(unique.length)saveCache();
  }
  function walk(root){
@@ -1125,18 +1177,18 @@ render();
    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
    let node;while((node=walker.nextNode()))nodes.push(node);
    elements.push(...root.querySelectorAll("[placeholder],[title],[aria-label]"));
+   if(root.matches&&root.matches("[placeholder],[title],[aria-label]"))elements.push(root);
   }
   return {nodes,elements};
  }
  async function translateRoot(root,run){
   const found=walk(root);
-  await processNodes(found.nodes,activeLang,run);
-  await processAttributes(found.elements,activeLang,run);
+  await Promise.all([processNodes(found.nodes,activeLang,run),processAttributes(found.elements,activeLang,run)]);
  }
  function restoreOriginals(){
   if(observer)observer.disconnect();
-  for(const [node,original] of origins){if(node.isConnected)node.nodeValue=original}
-  for(const [el,attrs] of attrOrigins){if(el.isConnected)for(const [attr,value] of Object.entries(attrs)){if(value==null)el.removeAttribute(attr);else el.setAttribute(attr,value)}}
+  for(const [node,original] of origins)if(node.isConnected)node.nodeValue=original;
+  for(const [el,attrs] of attrOrigins)if(el.isConnected)for(const [attr,value] of Object.entries(attrs)){if(value==null)el.removeAttribute(attr);else el.setAttribute(attr,value)}
   origins.clear();attrOrigins.clear();
   if(observer)observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","title","aria-label"]});
  }
@@ -1147,19 +1199,18 @@ render();
   translateRoot(document.body,run).catch(()=>{});
  };
  observer=new MutationObserver(records=>{
-  if(busy)return;
   const roots=[];
   for(const record of records){
    if(record.type==="attributes"){if(record.target&&!isExcluded(record.target))roots.push(record.target)}
    else if(record.type==="characterData"){if(!origins.has(record.target)&&textEligible(record.target))roots.push(record.target)}
-   else for(const node of record.addedNodes){if(node.nodeType===Node.TEXT_NODE||node.nodeType===Node.ELEMENT_NODE)roots.push(node)}
+   else for(const node of record.addedNodes)if(node.nodeType===Node.TEXT_NODE||node.nodeType===Node.ELEMENT_NODE)roots.push(node);
   }
   if(!roots.length)return;
   clearTimeout(pendingTimer);
   pendingTimer=setTimeout(()=>{
    const run=revision;
-   (async()=>{for(const root of roots){if(run!==revision)return;await translateRoot(root,run)}})().catch(()=>{});
-  },120);
+   (async()=>{for(const root of [...new Set(roots)]){if(run!==revision)return;await translateRoot(root,run)}})().catch(()=>{});
+  },160);
  });
  observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","title","aria-label"]});
 })();
