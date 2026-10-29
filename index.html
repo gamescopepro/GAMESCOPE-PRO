@@ -568,6 +568,65 @@ render();
   seed=adminCatalogRows.filter(r=>!r.is_hidden).map(r=>({id:r.id,title:r.title,genre:r.genre||"ژانر نامشخص",emoji:r.emoji||"🎮",critic:r.critic===null?null:Number(r.critic),publisher:r.publisher||"",releaseDate:r.release_date||"",releaseStatus:r.release_status||"unknown",storeUrl:r.store_url||"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.parse(r.created_at)||Date.now()}));
   render();renderAdminList();return true;
  }
+ window.gamescopePublishRawgResults=async function(futureGames,recentGames){
+  if(!currentUser||!isOwner)return {published:false,added:0,updated:0,items:[]};
+  const {data:existingRows,error}=await client.from("site_catalog").select("*");
+  if(error)throw new Error("امکان خواندن کاتالوگ عمومی نبود: "+error.message);
+  const rows=existingRows||[],byId=new Map(rows.map(r=>[String(r.id),r])),byTitle=new Map(rows.map(r=>[normalizeGameName(r.title),r]));
+  const today=new Date().toISOString().slice(0,10),unique=new Map();
+  (futureGames||[]).forEach(g=>unique.set(String(g.id),{game:g}));
+  (recentGames||[]).forEach(g=>unique.set(String(g.id),{game:g}));
+  const candidates=[...unique.values()].map(x=>x.game).filter(g=>g&&g.id&&g.name);
+  const batch=[],changeItems=[];let added=0,updated=0,detailRequests=0;
+  for(const game of candidates){
+   const rawId="rawg_"+String(game.id),existing=byId.get(rawId)||byTitle.get(normalizeGameName(game.name));
+   let names=companyNames(game);
+   if(!names.length&&detailRequests<10){
+    detailRequests++;
+    try{const detail=await rawgGameDetails(game.id);names=companyNames(detail);if(names.length)onlineCache.set(String(game.id),{...game,...detail});}catch(e){}
+   }
+   const releaseDate=game.released||existing?.release_date||null;
+   const releaseStatus=releaseDate?(releaseDate>today?"upcoming":"released"):(existing?.release_status||"unknown");
+   const genre=Array.isArray(game.genres)&&game.genres.length?game.genres.map(x=>x.name).join("، "):"";
+   const storeUrl="https://store.playstation.com/en-us/search/"+encodeURIComponent(game.name);
+   if(existing){
+    const next={...existing};
+    if((!next.publisher||!String(next.publisher).trim())&&names.length)next.publisher=names.join(" • ");
+    if((!next.release_date)&&releaseDate)next.release_date=releaseDate;
+    if((!next.genre||next.genre==="ژانر نامشخص")&&genre)next.genre=genre;
+    if((next.critic===null||next.critic===undefined)&&typeof game.metacritic==="number")next.critic=Math.round(game.metacritic)/10;
+    if((!next.store_url||!String(next.store_url).trim()))next.store_url=storeUrl;
+    if(!next.emoji)next.emoji="🎮";
+    if(next.release_status!==releaseStatus)next.release_status=releaseStatus;
+    const fields=["publisher","release_date","genre","critic","store_url","emoji","release_status"];
+    const changed=fields.some(k=>String(next[k]??"")!==String(existing[k]??""));
+    if(changed){next.updated_at=new Date().toISOString();batch.push(next);byId.set(String(next.id),next);byTitle.set(normalizeGameName(next.title),next);updated++;changeItems.push({kind:"base",title:next.title,text:"اطلاعات کاتالوگ به‌روزرسانی شد"+(next.publisher?" • شرکت: "+next.publisher:"")+" • وضعیت: "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"نامشخص")});}
+   }else{
+    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl,is_hidden:false,is_builtin:false};
+    batch.push(next);byId.set(rawId,next);byTitle.set(normalizeGameName(next.title),next);added++;
+    changeItems.push({kind:"new",title:next.title,text:"به کاتالوگ عمومی افزوده شد"+(next.publisher?" • شرکت: "+next.publisher:" • اطلاعات شرکت هنوز در RAWG موجود نیست")+" • "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"وضعیت انتشار نامشخص")});
+   }
+  }
+  for(let i=0;i<batch.length;i+=100){
+   const {error:upsertError}=await client.from("site_catalog").upsert(batch.slice(i,i+100),{onConflict:"id"});
+   if(upsertError)throw new Error("ذخیرهٔ تغییرات سراسری ناموفق بود: "+upsertError.message);
+  }
+  if(batch.length)await loadGlobalCatalog();
+  return {published:true,added,updated,items:changeItems.slice(0,25)};
+ };
+ window.gamescopeStoreUpdateReport=async function(report){
+  if(!currentUser||!isOwner)return {stored:false};
+  const {error}=await client.from("site_update_runs").insert({status:report.status||"success",added_count:report.added_count||0,updated_count:report.updated_count||0,note:String(report.note||"").slice(0,4000),items:Array.isArray(report.items)?report.items.slice(0,30):[],actor_id:currentUser.id});
+  if(error)return {stored:false,error:error.message};
+  return {stored:true};
+ };
+ window.gamescopeLoadLatestUpdateReport=async function(){
+  const {data,error}=await client.from("site_update_runs").select("run_at,note,items,added_count,updated_count,status").order("run_at",{ascending:false}).limit(1);
+  if(error||!data?.length)return false;
+  const latest=data[0];
+  if(typeof updateLogHtml==="function")updateLogHtml(Array.isArray(latest.items)?latest.items:[],new Date(latest.run_at),latest.note||"آخرین گزارش به‌روزرسانی");
+  return true;
+ };
  function clearAdminForm(){
   adminEditingRecord=null;$("gsAdminEditId").value="";$("gsAdminGameTitle").value="";$("gsAdminGameGenre").value="";
   $("gsAdminGameEmoji").value="🎮";$("gsAdminGameCritic").value="";$("gsAdminPublisher").value="";
