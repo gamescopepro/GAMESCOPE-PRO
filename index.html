@@ -52,6 +52,11 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 .gs-auth-method:focus-visible,.gs-auth-language select:focus-visible{outline:3px solid #71dfff;outline-offset:2px}
 @media(max-width:420px){.gs-auth-entry{padding:10px}.gs-auth-method{font-size:11px;padding:9px 5px}}
 
+
+.gs-lang-progress{display:flex;align-items:center;gap:10px;max-width:1050px;margin:0 auto;padding:7px 16px;color:var(--muted);font-size:12px}
+.gs-lang-progress-track{height:6px;flex:1;min-width:40px;overflow:hidden;border-radius:99px;background:#13263d;border:1px solid #254361}
+.gs-lang-progress-bar{height:100%;width:0;background:linear-gradient(90deg,#2b8cff,#38d7ff);transition:width .16s ease}
+.gs-lang-progress-percent{font-variant-numeric:tabular-nums;min-width:38px;text-align:end;color:var(--cyan)}
 </style>
 </head>
 <body>
@@ -59,6 +64,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 
 
 <header><div class="wrap brand"><div class="logo">🎮</div><div><h1>GAMESCOPE <span style="color:#38d7ff">PRO</span></h1><p id="gsSiteTagline">کتابخانه شخصی بازی‌های پلی‌استیشن ۵</p></div><div class="top-actions"><div class="owner-menu-wrap hidden" id="gsOwnerMenuWrap"><button class="account-icon" id="gsOwnerMenuBtn" aria-label="منوی مالک" title="ابزارهای مالک">⋮</button><div class="owner-menu hidden" id="gsOwnerMenu"><button id="gsOpenAdmin" type="button">👑 ورود به پنل مالک</button></div></div><button class="account-icon" id="openGsSettings" aria-label="تنظیمات" title="تنظیمات">⚙️</button><button class="account-icon" id="openPsnAccount" aria-label="حساب GAMESCOPE" title="حساب GAMESCOPE">👤</button></div></div></header>
+<div id="gsLangProgress" class="gs-lang-progress hidden" aria-hidden="true" data-no-translate><div class="gs-lang-progress-track"><div id="gsLangProgressBar" class="gs-lang-progress-bar"></div></div><span id="gsLangProgressText" class="gs-lang-progress-percent">0%</span></div>
 <section class="hero wrap"><div class="hero-card"><div class="eyebrow">YOUR GAMING UNIVERSE</div><h2 id="gsHeroTitle">همهٔ بازی‌هات، یک‌جا ✨</h2><p id="gsHeroDescription">بازی‌ها رو پیدا کن، به کتابخانه‌ات اضافه کن، امتیاز بده و فهرست مخصوص خودت رو بساز. اطلاعاتت روی همین دستگاه ذخیره می‌شه.</p><div class="stats"><div class="stat"><b id="countStat">0</b><span>بازی در کتابخانه</span></div><div class="stat"><b id="favStat">0</b><span>علاقه‌مندی‌ها</span></div><div class="stat"><b id="avgStat">—</b><span>میانگین امتیاز تو</span></div></div></div></section>
 
 
@@ -998,133 +1004,121 @@ render();
 
 <script>
 (function(){
- // Batch translation engine with a bounded request queue, resilient segment parsing,
- // local cache, and MutationObserver support for newly-rendered UI.
- const CACHE_KEY="gamescope_ui_translations_v4";
+ // Reliable whole-interface translator: use the actual single-text endpoint, not /translate_a/t.
+ const CACHE_KEY="gamescope_ui_translations_v5";
  const origins=new Map(), attrOrigins=new Map();
+ const translatedValues=new WeakMap(), translatedAttrs=new WeakMap();
  let activeLang="fa", revision=0, observer=null, pendingTimer=0;
- let cache={};
+ let cache={}, inFlight=0, totalWork=0, finishedWork=0, failedWork=0, hideTimer=0;
  try{cache=JSON.parse(localStorage.getItem(CACHE_KEY)||"{}")||{}}catch(e){cache={}}
  const codeMap={zh:"zh-CN",fil:"tl",he:"iw"};
- const excluded="#gsWelcome,#gsSettingsEmail,#profileText,.brand h1,.logo,.card h4,#onlineResults h4,.admin-row strong,script,style,noscript,textarea,input,code,pre,[contenteditable='true'],[data-no-translate]";
- const SEP_A="⟦GSSEG";
- const SEP_B="###GSCUT";
+ const rtl=new Set(["fa","ar","ur","he"]);
+ const excludedText=".brand h1,.logo,.card h4,#onlineResults h4,.admin-row strong,#gsSettingsEmail,script,style,noscript,input,textarea,code,pre,[contenteditable='true'],[data-no-translate],#gsWelcomeLanguage,#gsSettingsLanguage";
  function langCode(lang){return codeMap[lang]||lang||"en"}
- function isExcluded(el){
-  if(!el||!el.closest)return true;
-  if(el.closest(excluded))return true;
-  if(el.closest("#gsWelcomeLanguage,#gsSettingsLanguage"))return true;
-  return false;
- }
+ function isExcludedText(el){return !el||!el.closest||!!el.closest(excludedText)}
+ function isExcludedAttribute(el){return !el||!el.closest||!!el.closest("script,style,noscript,code,pre,[contenteditable='true'],[data-no-translate],#gsWelcomeLanguage,#gsSettingsLanguage,#gsSettingsEmail,.brand h1,.logo")}
  function textEligible(node){
-  if(!node||node.nodeType!==Node.TEXT_NODE||!node.parentElement||isExcluded(node.parentElement))return false;
-  const value=node.nodeValue||"";
-  if(!value.trim()||value.trim().length>1200||/@|https?:\/\/|www\./i.test(value))return false;
+  if(!node||node.nodeType!==Node.TEXT_NODE||!node.parentElement||isExcludedText(node.parentElement))return false;
+  const value=(node.nodeValue||"").trim();
+  if(!value||value.length>1600)return false;
+  if(/^(?:[^\s@]+@[^\s@]+\.[^\s@]+|https?:\/\/\S+|www\.\S+)$/i.test(value))return false;
   return true;
  }
  function attrEligible(el,attr){
-  if(!el||isExcluded(el))return false;
+  if(isExcludedAttribute(el))return false;
   const value=el.getAttribute(attr)||"";
-  return !!value.trim()&&value.length<320&&!/@|https?:\/\/|www\./i.test(value);
+  if(!value.trim()||value.length>320)return false;
+  return !/^(?:[^\s@]+@[^\s@]+\.[^\s@]+|https?:\/\/\S+|www\.\S+)$/i.test(value.trim());
  }
  function cacheKey(lang,text){return lang+"§"+text}
  function saveCache(){
-  try{
-   const keys=Object.keys(cache);
-   if(keys.length>6000)for(const k of keys.slice(0,keys.length-5000))delete cache[k];
-   localStorage.setItem(CACHE_KEY,JSON.stringify(cache));
-  }catch(e){}
+  try{const keys=Object.keys(cache);if(keys.length>12000)for(const k of keys.slice(0,keys.length-10000))delete cache[k];localStorage.setItem(CACHE_KEY,JSON.stringify(cache))}catch(e){}
  }
  function parseResponse(data){
-  if(!Array.isArray(data)||!Array.isArray(data[0]))throw new Error("Unexpected translation response");
+  if(!Array.isArray(data)||!Array.isArray(data[0]))throw new Error("Unexpected Google Translate response");
   return data[0].map(part=>Array.isArray(part)?(part[0]||""):"").join("");
  }
- async function fetchBatch(items,lang,run){
-  const params=new URLSearchParams({client:"dict-chrome-ex",sl:"auto",tl:langCode(lang)});
-  items.forEach(text=>params.append("q",text));
-  const url="https://translate.googleapis.com/translate_a/t?"+params.toString();
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
-  let data;
-  try{
-   const response=await fetch(url,{method:"GET",cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json,text/plain,*/*"}});
-   if(!response.ok)throw new Error("Translation service returned "+response.status);
-   data=await response.json();
-  }finally{clearTimeout(timer)}
-  if(run!==revision)return items;
-  if(!Array.isArray(data))throw new Error("Unexpected translation response");
-  let translations;
-  if(data.length===items.length){
-   translations=data.map(entry=>Array.isArray(entry)?entry[0]:entry);
-  }else if(items.length===1&&Array.isArray(data[0])){
-   translations=[data[0][0]];
-  }else{
-   throw new Error("Translation count mismatch");
-  }
-  if(translations.length!==items.length)throw new Error("Translation count mismatch");
-  return translations.map((value,index)=>{
-   const translated=String(value==null?"":value).trim();
-   // Never cache an empty result; preserve the original phrase if service returns no text.
-   return translated||items[index];
-  });
+ function containsPersian(text){return /[\u0600-\u06FF\u0750-\u077F]/.test(text)}
+ function unchangedPersian(original,translated,lang){
+  return original.trim()===translated.trim()&&containsPersian(original)&&!new Set(["fa","ar","ur"]).has(lang);
  }
- async function requestBatch(items,lang,run){
-  try{return await fetchBatch(items,lang,run)}catch(error){
-   if(run!==revision)return items;
-   // A batch may be rejected when the service limits URL size. Retry only this small
-   // chunk with a maximum of two concurrent single-item requests.
-   const results=new Array(items.length);let next=0;
-   async function worker(){
-    while(next<items.length&&run===revision){
-     const index=next++,text=items[index];let translated=text;
-     for(let attempt=0;attempt<2&&run===revision;attempt++){
-      try{
-       const one=await fetchBatch([text],lang,run);
-       translated=one[0]||text;
-       if(translated!==text||/[A-Za-z\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u0600-\u06FF]/.test(text))break;
-      }catch(e){}
-      if(attempt===0)await new Promise(resolve=>setTimeout(resolve,500));
-     }
-     results[index]=translated||text;
+ async function translateOne(text,lang,run){
+  for(let attempt=0;attempt<2;attempt++){
+   if(run!==revision)return {text,ok:false};
+   const params=new URLSearchParams({client:"gtx",sl:"auto",tl:langCode(lang),dt:"t",ie:"UTF-8",oe:"UTF-8",q:text});
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+   try{
+    const response=await fetch("https://translate.googleapis.com/translate_a/single?"+params.toString(),{method:"GET",cache:"force-cache",signal:controller.signal,headers:{"Accept":"application/json"}});
+    if(!response.ok)throw new Error("Google Translate HTTP "+response.status);
+    const data=await response.json();
+    if(run!==revision)return {text,ok:false};
+    const translated=parseResponse(data).trim();
+    if(!translated)throw new Error("Empty translation");
+    if(unchangedPersian(text,translated,lang)){
+     if(attempt===0){await new Promise(resolve=>setTimeout(resolve,350));continue}
+     return {text,ok:false};
     }
-   }
-   await Promise.all(Array.from({length:Math.min(2,items.length)},worker));
-   return results.map((value,index)=>value||items[index]);
+    return {text:translated,ok:true};
+   }catch(e){
+    if(attempt===1)return {text,ok:false};
+    await new Promise(resolve=>setTimeout(resolve,350));
+   }finally{clearTimeout(timer)}
   }
+  return {text,ok:false};
  }
- function makeChunks(texts,maxItems=60,maxUrlChars=6200){
-  const chunks=[];let batch=[],size=140;
-  for(const text of texts){
-   // Repeated q= parameters let the service return one separate result per phrase.
-   // Measure URL-encoded length so Persian/Arabic phrases do not produce oversized URLs.
-   const extra=encodeURIComponent(text).length+3;
-   if(batch.length&&(batch.length>=maxItems||size+extra>maxUrlChars)){chunks.push(batch);batch=[];size=140}
-   if(extra>maxUrlChars-140){chunks.push([text]);continue}
-   batch.push(text);size+=extra;
+ function progressVisible(){
+  const panel=document.getElementById("gsLangProgress");
+  if(panel)panel.classList.remove("hidden");
+  if(hideTimer){clearTimeout(hideTimer);hideTimer=0}
+ }
+ function paintProgress(){
+  const bar=document.getElementById("gsLangProgressBar"),label=document.getElementById("gsLangProgressText"),panel=document.getElementById("gsLangProgress");
+  if(!bar||!label||!panel)return;
+  const pct=totalWork?Math.min(100,Math.round(finishedWork*100/totalWork)):100;
+  bar.style.width=pct+"%";label.textContent=pct+"%";label.title=failedWork?String(failedWork):"";
+  if(inFlight===0&&pct>=100)hideTimer=setTimeout(()=>{if(inFlight===0)panel.classList.add("hidden")},1200);
+ }
+ async function translateUnique(texts,lang,run,onResult){
+  const missing=[];
+  for(const text of texts){const value=cache[cacheKey(lang,text)];if(value)onResult(text,value);else missing.push(text)}
+  if(!missing.length)return;
+  inFlight++;totalWork+=missing.length;progressVisible();paintProgress();
+  let next=0;
+  async function worker(){
+   while(run===revision){
+    const index=next++;
+    if(index>=missing.length)return;
+    const original=missing[index],result=await translateOne(original,lang,run);
+    if(run!==revision)return;
+    if(result.ok){cache[cacheKey(lang,original)]=result.text;onResult(original,result.text)}
+    else{failedWork++;onResult(original,original)}
+    finishedWork++;paintProgress();
+   }
   }
-  if(batch.length)chunks.push(batch);
-  return chunks;
+  try{await Promise.all(Array.from({length:Math.min(4,missing.length)},worker))}
+  finally{saveCache();inFlight=Math.max(0,inFlight-1);paintProgress()}
  }
  async function processNodes(nodes,lang,run){
-  const unique=[],seen=new Set(),nodeOriginals=[];
+  const items=[],unique=[],seen=new Set();
   for(const node of nodes){
    if(!textEligible(node))continue;
    if(!origins.has(node))origins.set(node,node.nodeValue);
    const original=origins.get(node)||"",trimmed=original.trim();
    if(!trimmed)continue;
-   nodeOriginals.push({node,original,trimmed});
-   const key=cacheKey(lang,trimmed);
-   if(cache[key])continue;
-   if(!seen.has(trimmed)){seen.add(trimmed);unique.push(trimmed)}
+   items.push({node,original,trimmed});
+   if(!cache[cacheKey(lang,trimmed)]&&!seen.has(trimmed)){seen.add(trimmed);unique.push(trimmed)}
   }
-  const chunks=makeChunks(unique,60,6200);
-  await runChunks(chunks,lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
+  const translated=new Map();
+  await translateUnique(unique,lang,run,(original,value)=>translated.set(original,value));
   if(run!==revision)return;
-  for(const entry of nodeOriginals){
-   if(!entry.node.isConnected)continue;
-   const translated=cache[cacheKey(lang,entry.trimmed)];
-   if(translated)entry.node.nodeValue=entry.original.replace(entry.trimmed,translated);
+  for(const item of items){
+   if(!item.node.isConnected)continue;
+   const value=cache[cacheKey(lang,item.trimmed)]||translated.get(item.trimmed);
+   if(value){
+    const output=item.original.replace(item.trimmed,value);
+    if(item.node.nodeValue!==output){item.node.nodeValue=output;translatedValues.set(item.node,output)}
+   }
   }
-  if(unique.length)saveCache();
  }
  async function processAttributes(elements,lang,run){
   const work=[],unique=[],seen=new Set();
@@ -1137,18 +1131,20 @@ render();
     const original=record[attr];
     if(!original)continue;
     work.push({el,attr,original});
-    const key=cacheKey(lang,original);
-    if(!cache[key]&&!seen.has(original)){seen.add(original);unique.push(original)}
+    if(!cache[cacheKey(lang,original)]&&!seen.has(original)){seen.add(original);unique.push(original)}
    }
   }
-  await runChunks(makeChunks(unique,60,6200),lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
+  const translated=new Map();
+  await translateUnique(unique,lang,run,(original,value)=>translated.set(original,value));
   if(run!==revision)return;
   for(const item of work){
    if(!item.el.isConnected)continue;
-   const value=cache[cacheKey(lang,item.original)];
-   if(value)item.el.setAttribute(item.attr,value);
+   const value=cache[cacheKey(lang,item.original)]||translated.get(item.original);
+   if(value&&item.el.getAttribute(item.attr)!==value){
+    item.el.setAttribute(item.attr,value);
+    let record=translatedAttrs.get(item.el);if(!record){record={};translatedAttrs.set(item.el,record)}record[item.attr]=value;
+   }
   }
-  if(unique.length)saveCache();
  }
  function walk(root){
   const nodes=[],elements=[];
@@ -1156,8 +1152,8 @@ render();
   if(root.nodeType===Node.TEXT_NODE){nodes.push(root);return {nodes,elements}}
   if(root.nodeType===Node.ELEMENT_NODE)elements.push(root);
   if(root.querySelectorAll){
-   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-   let node;while((node=walker.nextNode()))nodes.push(node);
+   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;
+   while((node=walker.nextNode()))nodes.push(node);
    elements.push(...root.querySelectorAll("[placeholder],[title],[aria-label]"));
    if(root.matches&&root.matches("[placeholder],[title],[aria-label]"))elements.push(root);
   }
@@ -1175,24 +1171,36 @@ render();
   if(observer)observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","title","aria-label"]});
  }
  window.gamescopeTranslatePage=function(lang){
-  activeLang=lang||"fa";const run=++revision;
-  restoreOriginals();
-  if(pendingTimer)clearTimeout(pendingTimer);
-  translateRoot(document.body,run).catch(()=>{});
+  activeLang=lang||"fa";revision++;totalWork=0;finishedWork=0;failedWork=0;
+  document.documentElement.lang=activeLang;document.documentElement.dir=rtl.has(activeLang)?"rtl":"ltr";
+  restoreOriginals();if(pendingTimer)clearTimeout(pendingTimer);
+  progressVisible();paintProgress();
+  translateRoot(document.body,revision).catch(error=>console.warn("GAMESCOPE translation failed:",error));
  };
  observer=new MutationObserver(records=>{
   const roots=[];
   for(const record of records){
-   if(record.type==="attributes"){if(record.target&&!isExcluded(record.target))roots.push(record.target)}
-   else if(record.type==="characterData"){if(!origins.has(record.target)&&textEligible(record.target))roots.push(record.target)}
-   else for(const node of record.addedNodes)if(node.nodeType===Node.TEXT_NODE||node.nodeType===Node.ELEMENT_NODE)roots.push(node);
+   if(record.type==="attributes"){
+    const el=record.target,attr=record.attributeName,latest=translatedAttrs.get(el);
+    if(latest&&latest[attr]===el.getAttribute(attr))continue;
+    if(!attrOrigins.has(el))attrOrigins.set(el,{});
+    attrOrigins.get(el)[attr]=el.getAttribute(attr);if(latest)delete latest[attr];
+    if(!isExcludedAttribute(el))roots.push(el);
+   }else if(record.type==="characterData"){
+    const node=record.target,current=node.nodeValue||"";
+    if(translatedValues.get(node)===current)continue;
+    if(origins.has(node))origins.set(node,current);
+    if(textEligible(node))roots.push(node);
+   }else{
+    for(const node of record.addedNodes)if(node.nodeType===Node.TEXT_NODE||node.nodeType===Node.ELEMENT_NODE)roots.push(node);
+   }
   }
   if(!roots.length)return;
   clearTimeout(pendingTimer);
   pendingTimer=setTimeout(()=>{
    const run=revision;
-   (async()=>{for(const root of [...new Set(roots)]){if(run!==revision)return;await translateRoot(root,run)}})().catch(()=>{});
-  },160);
+   (async()=>{for(const root of [...new Set(roots)]){if(run!==revision)return;await translateRoot(root,run)}})().catch(error=>console.warn("GAMESCOPE dynamic translation failed:",error));
+  },140);
  });
  observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","title","aria-label"]});
 })();
