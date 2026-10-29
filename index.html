@@ -324,7 +324,7 @@ const GAME_SEARCH_ALIASES=[
  {canonical:"EA SPORTS FC 27",aliases:["fc27","fc 27","ea sports fc27","ea sports fc 27","fifa 27","fifa27"]}
 ];
 function canonicalKnownGameQuery(query){
- const normalized=normalizeGameName(query);
+ const normalized=normalizeGameName(query).replace(/\\b(?:ps ?5|playstation 5)\\b/g," ").replace(/\\s+/g," ").trim();
  for(const entry of GAME_SEARCH_ALIASES){
   if(entry.aliases.some(alias=>normalizeGameName(alias)===normalized))return entry.canonical;
  }
@@ -432,6 +432,11 @@ async function loadOnlineGames({query="",append=false}={}){
  const officialPhantom=phantomBladeZeroOfficialRecord();
  const key=getRawgKey();
  if(!key&&!isPhantomSearch){setOnlineStatus("ابتدا کلید API را وارد و با دکمه «بررسی و ذخیره کلید» ذخیره کن.");return}
+ if(!key&&isPhantomSearch){
+  renderOnlineResults([officialPhantom],false);onlineNext=null;onlineNextQueue=[];
+  setOnlineStatus("عنوان رسمی Phantom Blade Zero از اطلاعات PlayStation نمایش داده شد. برای جست‌وجوی سایر بازی‌ها، کلید RAWG را وارد کن.");
+  return;
+ }
  onlineBusy=true;
  document.getElementById("onlineResults").classList.remove("hidden");
  document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
