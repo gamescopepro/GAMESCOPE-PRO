@@ -485,11 +485,117 @@ render();
 (function(){
  const client=window.supabase.createClient("https://axwjiwpwqoykvcbumixy.supabase.co","sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-");
  const $=id=>document.getElementById(id), say=t=>{$("gsAuthMessage").textContent=t};
- let currentUser=null, syncing=false;
+ let currentUser=null, syncing=false, isOwner=false;
+ function setOwnerUI(value){
+  isOwner=!!value;
+  $("gsOwnerMenuWrap").classList.toggle("hidden",!isOwner);
+  if(!isOwner){$("gsOwnerMenu").classList.add("hidden");$("gsAdminOverlay").classList.remove("open");}
+ }
+ async function refreshOwnerState(user){
+  if(!user){setOwnerUI(false);return {owner:false,profile:null};}
+  const {data:profile,error}=await client.from("profiles").select("role,username").eq("id",user.id).maybeSingle();
+  const owner=!error&&profile?.role==="owner";setOwnerUI(owner);return {owner,profile};
+ }
+ function applySiteSettings(row){
+  if(!row)return;
+  [["gsSiteTagline","tagline"],["gsHeroTitle","hero_title"],["gsHeroDescription","hero_description"]].forEach(([id,key])=>{const el=$(id);if(el&&typeof row[key]==="string")el.textContent=row[key];});
+ }
+ async function loadSiteSettings(){
+  const {data,error}=await client.from("site_settings").select("*").eq("id","main").maybeSingle();
+  if(!error&&data){applySiteSettings(data);$("gsAdminTagline").value=data.tagline||"";$("gsAdminHeroTitle").value=data.hero_title||"";$("gsAdminHeroDescription").value=data.hero_description||"";}
+ }
+ let adminCatalogRows=[],adminEditingRecord=null;
+ function adminStatus(t){$("gsAdminStatus").textContent=t;}
+ function releaseLabel(v){return v==="upcoming"?"به‌زودی":v==="released"?"منتشر شده":"نامشخص";}
+ function updateAdminCounts(){
+  $("gsAdminTotal").textContent=adminCatalogRows.length;
+  $("gsAdminVisible").textContent=adminCatalogRows.filter(x=>!x.is_hidden).length;
+  $("gsAdminHidden").textContent=adminCatalogRows.filter(x=>x.is_hidden).length;
+ }
+ function renderAdminList(){
+  const q=$("gsAdminSearch").value.trim().toLowerCase();
+  const rows=adminCatalogRows.filter(r=>(String(r.title)+" "+String(r.genre)+" "+String(r.publisher||"")).toLowerCase().includes(q));
+  $("gsAdminList").innerHTML=rows.length?rows.map(r=>'<article class="admin-row"><div class="admin-row-main"><strong>'+esc(r.emoji||"🎮")+' '+esc(r.title)+(r.is_hidden?' <span class="chip">مخفی</span>':'')+'</strong><div class="admin-row-meta">'+esc(r.genre||"ژانر نامشخص")+' • '+esc(r.publisher||"ناشر ثبت نشده")+'<br>وضعیت: '+releaseLabel(r.release_status)+(r.release_date?' • '+esc(r.release_date):'')+' • '+(r.is_builtin?'بازی پایهٔ سایت':'بازی افزوده‌شده توسط مالک')+'</div></div><div class="admin-row-actions"><button data-admin-action="edit" data-id="'+esc(r.id)+'" type="button">✏️ ویرایش</button><button class="secondary" data-admin-action="toggle" data-id="'+esc(r.id)+'" type="button">'+(r.is_hidden?'نمایش':'پنهان‌سازی')+'</button><button class="danger" data-admin-action="delete" data-id="'+esc(r.id)+'" type="button">حذف</button></div></article>').join(""):'<div class="empty">بازی‌ای پیدا نشد.</div>';
+  updateAdminCounts();
+ }
+ async function loadGlobalCatalog(){
+  const {data,error}=await client.from("site_catalog").select("*").order("title");
+  if(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
+  adminCatalogRows=data||[];
+  seed=adminCatalogRows.filter(r=>!r.is_hidden).map(r=>({id:r.id,title:r.title,genre:r.genre||"ژانر نامشخص",emoji:r.emoji||"🎮",critic:r.critic===null?null:Number(r.critic),publisher:r.publisher||"",releaseDate:r.release_date||"",releaseStatus:r.release_status||"unknown",storeUrl:r.store_url||"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.parse(r.created_at)||Date.now()}));
+  render();renderAdminList();return true;
+ }
+ function clearAdminForm(){
+  adminEditingRecord=null;$("gsAdminEditId").value="";$("gsAdminGameTitle").value="";$("gsAdminGameGenre").value="";
+  $("gsAdminGameEmoji").value="🎮";$("gsAdminGameCritic").value="";$("gsAdminPublisher").value="";
+  $("gsAdminReleaseDate").value="";$("gsAdminReleaseStatus").value="unknown";$("gsAdminStoreUrl").value="";
+  $("gsAdminSaveGame").textContent="💾 ذخیره در سایت برای همه";$("gsAdminCancelEdit").classList.add("hidden");
+ }
+ function startAdminEdit(id){
+  const row=adminCatalogRows.find(r=>String(r.id)===String(id));if(!row)return;
+  adminEditingRecord=row;$("gsAdminEditId").value=row.id;$("gsAdminGameTitle").value=row.title||"";
+  $("gsAdminGameGenre").value=row.genre||"";$("gsAdminGameEmoji").value=row.emoji||"🎮";$("gsAdminGameCritic").value=row.critic??"";
+  $("gsAdminPublisher").value=row.publisher||"";$("gsAdminReleaseDate").value=row.release_date||"";
+  $("gsAdminReleaseStatus").value=row.release_status||"unknown";$("gsAdminStoreUrl").value=row.store_url||"";
+  $("gsAdminSaveGame").textContent="💾 ذخیرهٔ ویرایش";$("gsAdminCancelEdit").classList.remove("hidden");$("gsAdminGameTitle").focus();
+  adminStatus("در حال ویرایش: "+row.title);
+ }
+ function openAdmin(){
+  if(!isOwner){adminStatus("این حساب دسترسی مالک ندارد.");return;}
+  $("gsOwnerMenu").classList.add("hidden");$("gsAdminOverlay").classList.add("open");clearAdminForm();
+  Promise.all([loadGlobalCatalog(),loadSiteSettings()]).then(()=>adminStatus("دسترسی مالک تأیید شد؛ تغییرات برای همهٔ بازدیدکنندگان ذخیره می‌شوند."));
+ }
+ $("gsOwnerMenuBtn").addEventListener("click",()=>{if(isOwner)$("gsOwnerMenu").classList.toggle("hidden");});
+ document.addEventListener("click",e=>{if(!e.target.closest("#gsOwnerMenuWrap"))$("gsOwnerMenu").classList.add("hidden");});
+ $("gsOpenAdmin").addEventListener("click",openAdmin);
+ $("gsCloseAdmin").addEventListener("click",()=>$("gsAdminOverlay").classList.remove("open"));
+ $("gsAdminOverlay").addEventListener("click",e=>{if(e.target===$("gsAdminOverlay"))$("gsAdminOverlay").classList.remove("open");});
+ document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("gsAdminOverlay").classList.remove("open");$("gsOwnerMenu").classList.add("hidden");}});
+ $("gsAdminCancelEdit").addEventListener("click",clearAdminForm);
+ $("gsAdminReload").addEventListener("click",()=>loadGlobalCatalog().then(ok=>{if(ok)adminStatus("فهرست کاتالوگ تازه شد.");}));
+ $("gsAdminSearch").addEventListener("input",renderAdminList);
+ $("gsAdminList").addEventListener("click",async e=>{
+  const btn=e.target.closest("button[data-admin-action]");if(!btn)return;
+  if(!isOwner){adminStatus("دسترسی مالک تأیید نشده است.");return;}
+  const row=adminCatalogRows.find(r=>String(r.id)===String(btn.dataset.id));if(!row)return;
+  if(btn.dataset.adminAction==="edit"){startAdminEdit(row.id);return;}
+  if(btn.dataset.adminAction==="toggle"){
+   const {error}=await client.from("site_catalog").update({is_hidden:!row.is_hidden,updated_at:new Date().toISOString()}).eq("id",row.id);
+   if(error){adminStatus("ذخیره نشد: "+error.message);return;}
+   await loadGlobalCatalog();adminStatus(row.is_hidden?"بازی دوباره برای همه نمایش داده می‌شود.":"بازی از کاتالوگ عمومی پنهان شد.");return;
+  }
+  if(btn.dataset.adminAction==="delete"){
+   if(!confirm("بازی «"+row.title+"» به‌طور کامل از کاتالوگ عمومی حذف شود؟ این کار برای همه اعمال می‌شود."))return;
+   const {error}=await client.from("site_catalog").delete().eq("id",row.id);
+   if(error){adminStatus("حذف انجام نشد: "+error.message);return;}
+   if(adminEditingRecord?.id===row.id)clearAdminForm();
+   await loadGlobalCatalog();adminStatus("بازی از کاتالوگ عمومی حذف شد.");
+  }
+ });
+ $("gsAdminSaveGame").addEventListener("click",async()=>{
+  if(!isOwner){adminStatus("تنها مالک تأییدشده اجازهٔ ذخیره دارد.");return;}
+  const title=$("gsAdminGameTitle").value.trim(),url=$("gsAdminStoreUrl").value.trim(),ct=$("gsAdminGameCritic").value.trim();
+  if(!title){adminStatus("نام بازی را وارد کن.");$("gsAdminGameTitle").focus();return;}
+  if(ct!==""&&(!Number.isFinite(Number(ct))||Number(ct)<0||Number(ct)>10)){adminStatus("امتیاز باید بین صفر تا ده باشد.");return;}
+  if(url){try{const u=new URL(url);if(!["http:","https:"].includes(u.protocol))throw Error();}catch(e){adminStatus("لینک فروشگاه باید با https:// یا http:// شروع شود.");return;}}
+  const old=adminEditingRecord;
+  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
+  const b=$("gsAdminSaveGame");b.disabled=true;const {error}=await client.from("site_catalog").upsert(row,{onConflict:"id"});b.disabled=false;
+  if(error){adminStatus("ذخیره در پایگاه داده ناموفق بود: "+error.message);return;}
+  clearAdminForm();await loadGlobalCatalog();adminStatus(old?"ویرایش برای همه ذخیره شد.":"بازی جدید به کاتالوگ عمومی همه اضافه شد.");
+ });
+ $("gsAdminSaveSettings").addEventListener("click",async()=>{
+  if(!isOwner){adminStatus("تنها مالک تأییدشده اجازهٔ تغییر تنظیمات را دارد.");return;}
+  const row={id:"main",tagline:$("gsAdminTagline").value.trim(),hero_title:$("gsAdminHeroTitle").value.trim(),hero_description:$("gsAdminHeroDescription").value.trim(),updated_at:new Date().toISOString()};
+  if(!row.tagline||!row.hero_title||!row.hero_description){adminStatus("هر سه بخش متن صفحهٔ اصلی را کامل کن.");return;}
+  const b=$("gsAdminSaveSettings");b.disabled=true;const {error}=await client.from("site_settings").upsert(row,{onConflict:"id"});b.disabled=false;
+  if(error){adminStatus("تنظیمات ذخیره نشد: "+error.message);return;}
+  applySiteSettings(row);adminStatus("متن صفحهٔ اصلی برای همهٔ کاربران ذخیره شد.");
+ }
  function showUser(user,username){
   currentUser=user;$("gsAuthForms").classList.toggle("hidden",!!user);$("gsAuthUser").classList.toggle("hidden",!user);
   $("gsAuthState").textContent=user?"متصل و همگام‌سازی فعال":"وارد نشده‌ای";
-  if(!user){$("gsOwnerPanel")?.classList.add("hidden");if($("gsOwnerMessage"))$("gsOwnerMessage").textContent="برای دسترسی ویژه، از بخش ورود اختصاصی مالک استفاده کن."} if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
+  if(!user){setOwnerUI(false);$("gsOwnerPanel")?.classList.add("hidden");if($("gsOwnerMessage"))$("gsOwnerMessage").textContent="برای دسترسی ویژه، از بخش ورود اختصاصی مالک استفاده کن."} if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
  }
  async function syncDown(){
   if(!currentUser||syncing)return;syncing=true;
@@ -515,10 +621,10 @@ render();
   if(error){const m=String(error.message||"");$("gsOwnerMessage").textContent=/invalid login credentials/i.test(m)?"ایمیل یا رمز حساب سایت درست نیست؛ اگر هنوز حساب نساخته‌ای، اول از فرم «ساخت حساب» ثبت‌نام کن.":/email not confirmed/i.test(m)?"ایمیل حساب هنوز تأیید نشده؛ صندوق ورودی و پوشهٔ هرزنامه را بررسی کن.":/too many requests/i.test(m)?"تلاش‌های زیادی انجام شده؛ کمی صبر کن و دوباره امتحان کن.":"ورود ناموفق بود: "+m;return}
   const {data:profile,error:profileError}=await client.from("profiles").select("role,username").eq("id",data.user.id).maybeSingle();
   if(profileError||profile?.role!=="owner"){
-    await client.auth.signOut();showUser(null);$("gsOwnerPanel").classList.add("hidden");
+    await client.auth.signOut();showUser(null);setOwnerUI(false);$("gsOwnerPanel").classList.add("hidden");
     $("gsOwnerMessage").textContent="این حساب دسترسی مالک ندارد. نقش OWNER باید در پایگاه داده تأیید شده باشد.";return;
   }
-  showUser(data.user,profile.username);$("gsOwnerPanel").classList.remove("hidden");
+  showUser(data.user,profile.username);setOwnerUI(true);$("gsOwnerPanel").classList.remove("hidden");
   $("gsOwnerMessage").textContent="تأیید شد؛ خوش آمدی، مالک GAMESCOPE.";await syncDown();
  };
  $("gsSignup").onclick=async()=>{
@@ -534,13 +640,14 @@ render();
  $("gsLogin").onclick=async()=>{
   const email=$("gsEmail").value.trim(),password=$("gsPassword").value;if(!email||!password){say("ایمیل و رمز عبور را وارد کن.");return}
   say("در حال ورود…");const {data,error}=await client.auth.signInWithPassword({email,password});if(error){say(error.message);return}
-  const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await syncDown();
+  const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await refreshOwnerState(data.user);await syncDown();
  };
  $("gsForgot").onclick=async()=>{const email=$("gsEmail").value.trim();if(!email){say("اول ایمیلت را وارد کن.");return}
   const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:'https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/'});say(error?"خطا در ارسال ایمیل بازیابی: "+error.message:"اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود.");};
  $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}showUser(null);say("از حساب خارج شدی.")};
- client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(syncDown,0)}else showUser(null)});
- client.auth.getSession().then(({data})=>{if(data.session){showUser(data.session.user);syncDown()}else showUser(null)});
+ client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
+ client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
+ loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));
 })();
 </script>
 </body>
