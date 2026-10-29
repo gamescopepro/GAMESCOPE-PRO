@@ -324,7 +324,7 @@ const GAME_SEARCH_ALIASES=[
  {canonical:"EA SPORTS FC 27",aliases:["fc27","fc 27","ea sports fc27","ea sports fc 27","fifa 27","fifa27"]}
 ];
 function canonicalKnownGameQuery(query){
- const normalized=normalizeGameName(query).replace(/\\b(?:ps ?5|playstation 5)\\b/g," ").replace(/\\s+/g," ").trim();
+ const normalized=normalizeGameName(query).replace(/\b(?:ps ?5|playstation 5)\b/g," ").replace(/\s+/g," ").trim();
  for(const entry of GAME_SEARCH_ALIASES){
   if(entry.aliases.some(alias=>normalizeGameName(alias)===normalized))return entry.canonical;
  }
