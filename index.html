@@ -849,7 +849,12 @@ render();
 }
 
 
+ const GOOGLE_OAUTH_CONFIGURED=false; // Verified in Supabase auth logs: "provider is not enabled".
  async function beginGoogleLogin(){
+  if(!GOOGLE_OAUTH_CONFIGURED){
+   say("ورود با گوگل هنوز در تنظیمات Supabase فعال نشده و برای همین قبلاً خطای 400 می‌داد. برای جلوگیری از صفحهٔ خطای خام، فعلاً اینجا متوقف شد؛ مالک باید Google OAuth را با Client ID و Client Secret در Supabase فعال کند. تا آن زمان گزینهٔ جیمیل با لینک ایمیل قابل استفاده است.");
+   return;
+  }
   const btn=$("gsGoogleLogin");
   if(btn){btn.disabled=true;btn.setAttribute("aria-busy","true");}
   say("در حال بازکردن صفحهٔ امن ورود Google…");
