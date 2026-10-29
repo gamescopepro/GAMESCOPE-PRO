@@ -35,7 +35,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 </style>
 </head>
 <body>
-<header><div class="wrap brand"><div class="logo">🎮</div><div><h1>GAMESCOPE <span style="color:#38d7ff">PRO</span></h1><p>کتابخانه شخصی بازی‌های پلی‌استیشن ۵</p></div><div class="top-actions"><button class="account-icon" id="openPsnAccount" aria-label="اکانت PS5 من" title="اکانت PS5 من">⋮</button></div></div></header>
+<header><div class="wrap brand"><div class="logo">🎮</div><div><h1>GAMESCOPE <span style="color:#38d7ff">PRO</span></h1><p>کتابخانه شخصی بازی‌های پلی‌استیشن ۵</p></div><div class="top-actions"><button class="account-icon" id="openPsnAccount" aria-label="حساب GAMESCOPE" title="حساب GAMESCOPE">👤</button></div></div></header>
 <section class="hero wrap"><div class="hero-card"><div class="eyebrow">YOUR GAMING UNIVERSE</div><h2>همهٔ بازی‌هات، یک‌جا ✨</h2><p>بازی‌ها رو پیدا کن، به کتابخانه‌ات اضافه کن، امتیاز بده و فهرست مخصوص خودت رو بساز. اطلاعاتت روی همین دستگاه ذخیره می‌شه.</p><div class="stats"><div class="stat"><b id="countStat">0</b><span>بازی در کتابخانه</span></div><div class="stat"><b id="favStat">0</b><span>علاقه‌مندی‌ها</span></div><div class="stat"><b id="avgStat">—</b><span>میانگین امتیاز تو</span></div></div></div></section>
 
 <div class="account-overlay" id="psnAccountOverlay" role="dialog" aria-modal="true" aria-labelledby="psnAccountTitle">
@@ -45,6 +45,18 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
       <div><h2 id="psnAccountTitle">اکانت PS5 من</h2><p>پروفایل، بازی‌ها، تروفی‌ها و وضعیت کنسول</p></div>
       <button class="account-close" id="closePsnAccount">بستن ✕</button>
     </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="section-title"><h3>🔐 حساب GAMESCOPE</h3><span class="hint" id="gsAuthState">در حال بررسی اتصال…</span></div>
+      <div id="gsAuthForms"><div class="formgrid">
+        <div class="field"><label for="gsUsername">نام کاربری (۳ تا ۲۰ حرف انگلیسی/عدد/_)</label><input id="gsUsername" autocomplete="username" minlength="3" maxlength="20" placeholder="مثلاً gamer_2026"></div>
+        <div class="field"><label for="gsEmail">ایمیل</label><input id="gsEmail" type="email" autocomplete="email" placeholder="you@example.com"></div>
+        <div class="field full"><label for="gsPassword">رمز عبور (حداقل ۸ کاراکتر)</label><input id="gsPassword" type="password" autocomplete="new-password" minlength="8" placeholder="رمز عبور امن"></div>
+        <div class="field"><button id="gsSignup" type="button">ساخت حساب</button></div><div class="field"><button id="gsLogin" class="secondary" type="button">ورود</button></div>
+        <div class="field full"><button id="gsForgot" class="secondary" type="button">بازیابی رمز با ایمیل</button></div>
+      </div></div>
+      <div id="gsAuthUser" class="hidden"><p id="gsWelcome" style="line-height:1.8"></p><div class="account-buttons"><button id="gsLogout" class="account-btn secondary" type="button">خروج از حساب</button></div></div>
+      <div id="gsAuthMessage" class="account-status" role="status" aria-live="polite">ثبت‌نام با ایمیل و نام کاربری یکتا؛ کتابخانه و علاقه‌مندی‌هایت بین دستگاه‌ها همگام می‌شوند.</div>
+    </div><div style="margin-top:18px"><h3>🎮 اطلاعات حساب PlayStation (PSN)</h3></div>
     <div class="account-grid">
       <div class="account-tile"><b>👤 پروفایل PSN</b><span>پس از راه‌اندازی اتصال امن، آیدی و اطلاعات قابل‌دسترسی حساب اینجا نمایش داده می‌شود.</span></div>
       <div class="account-tile"><b>🎮 بازی‌های من</b><span>نمایش کتابخانه و داده‌های بازی در صورت فراهم بودن دسترسی مجاز.</span></div>
@@ -114,7 +126,7 @@ let filter="all", query="";
 const seed=catalog.map((x,i)=>({id:"seed"+i,title:x[0],genre:x[1],emoji:x[2],critic:x[3],owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:i}));
 function allGames(){return seed.map(g=>({...g, ...(userGames.find(u=>u.id===g.id)||{})})).concat(userGames.filter(u=>!String(u.id).startsWith("seed")))}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(userGames));return true}catch(e){toast("ذخیره‌سازی مرورگر انجام نشد؛ فضای ذخیره‌سازی یا تنظیمات حریم خصوصی را بررسی کن");return false}}
-function saveObj(g){const i=userGames.findIndex(x=>x.id===g.id);if(i>=0)userGames[i]=g;else userGames.push(g);persist();render()}
+function saveObj(g){const i=userGames.findIndex(x=>x.id===g.id);if(i>=0)userGames[i]=g;else userGames.push(g);persist();render();if(window.gamescopeSyncGame)window.gamescopeSyncGame(g)}
 function getGame(id){return allGames().find(g=>String(g.id)===String(id))}
 function toast(t){let el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2300)}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -404,9 +416,11 @@ document.getElementById("importFile").onchange=async e=>{let f=e.target.files[0]
  data=data.filter(g=>g&&typeof g==="object"&&typeof g.id==="string"&&typeof g.title==="string"&&g.title.trim());
  data=data.map(g=>({...g,title:g.title.trim(),genre:typeof g.genre==="string"?g.genre:"ژانر نامشخص",owned:!!g.owned,fav:!!g.fav,rating:g.rating===null||g.rating===""||g.rating===undefined?null:Number(g.rating)})).filter(g=>g.rating===null||(Number.isFinite(g.rating)&&g.rating>=0&&g.rating<=10));
  userGames=data;persist();render();toast("پشتیبان معتبر وارد شد")}catch(err){toast("فایل پشتیبان معتبر نیست")}e.target.value=""};
+window.gamescopeReload=()=>{try{userGames=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){userGames=[]}render()};
 render();
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4"></script>
 <script>
 (function(){
   const overlay = document.getElementById('psnAccountOverlay');
@@ -434,5 +448,51 @@ render();
 })();
 </script>
 
+<script>
+(function(){
+ const client=window.supabase.createClient("https://axwjiwpwqoykvcbumixy.supabase.co","sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-");
+ const $=id=>document.getElementById(id), say=t=>{$("gsAuthMessage").textContent=t};
+ let currentUser=null, syncing=false;
+ function showUser(user,username){
+  currentUser=user;$("gsAuthForms").classList.toggle("hidden",!!user);$("gsAuthUser").classList.toggle("hidden",!user);
+  $("gsAuthState").textContent=user?"متصل و همگام‌سازی فعال":"وارد نشده‌ای";
+  if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
+ }
+ async function syncDown(){
+  if(!currentUser||syncing)return;syncing=true;
+  try{
+   const {data,error}=await client.from("user_games").select("*").eq("user_id",currentUser.id);if(error)throw error;
+   const cloud=(data||[]).map(r=>({id:r.game_id,title:r.game_title,genre:"ژانر نامشخص",emoji:"🎮",owned:!!r.in_library,fav:!!r.is_favorite,status:"در فهرست علاقه‌مندی",rating:r.rating==null?null:Number(r.rating),note:r.note||"",created:Date.parse(r.created_at)||Date.now()}));
+   const local=JSON.parse(localStorage.getItem("sadra_pshub_v1")||"[]"), map=new Map(cloud.map(g=>[String(g.id),g]));
+   local.forEach(g=>{if(!map.has(String(g.id)))map.set(String(g.id),g)});
+   window.__gamescopeCloudLoading=true;localStorage.setItem("sadra_pshub_v1",JSON.stringify([...map.values()]));window.__gamescopeCloudLoading=false;
+   if(window.gamescopeReload)window.gamescopeReload();say("حساب متصل است؛ اطلاعات ابری بارگذاری شد.");
+  }catch(e){window.__gamescopeCloudLoading=false;say("خطا در دریافت اطلاعات ابری: "+(e.message||"دسترسی ناموفق"))}finally{syncing=false}
+ }
+ window.gamescopeSyncGame=async g=>{
+  if(!currentUser||window.__gamescopeCloudLoading||!g)return;
+  const p={user_id:currentUser.id,game_id:String(g.id),game_title:String(g.title||"بازی"),in_library:!!g.owned,is_favorite:!!g.fav,rating:g.rating==null||g.rating===""?null:Number(g.rating),note:String(g.note||"").slice(0,3000),updated_at:new Date().toISOString()};
+  const {error}=await client.from("user_games").upsert(p,{onConflict:"user_id,game_id"});if(error)say("ذخیره محلی انجام شد، اما همگام‌سازی ابری خطا داد: "+error.message);
+ };
+ $("gsSignup").onclick=async()=>{
+  const username=$("gsUsername").value.trim(),email=$("gsEmail").value.trim(),password=$("gsPassword").value;
+  if(!/^[A-Za-z0-9_]{3,20}$/.test(username)){say("نام کاربری باید ۳ تا ۲۰ حرف انگلیسی، عدد یا _ باشد.");return}
+  if(!email||password.length<8){say("ایمیل معتبر و رمز حداقل ۸ کاراکتری وارد کن.");return}
+  say("در حال ساخت حساب…");const {data,error}=await client.auth.signUp({email,password,options:{data:{username},emailRedirectTo:location.origin+location.pathname}});
+  if(error){say(/duplicate|unique/i.test(error.message)?"این نام کاربری قبلاً گرفته شده؛ نام دیگری انتخاب کن.":error.message);return}
+  if(data.session){showUser(data.user,username);await syncDown();say("حساب ساخته شد و وارد شدی.")}else say("ثبت‌نام ثبت شد. ایمیلت را برای تأیید حساب بررسی کن؛ سپس وارد شو.");
+ };
+ $("gsLogin").onclick=async()=>{
+  const email=$("gsEmail").value.trim(),password=$("gsPassword").value;if(!email||!password){say("ایمیل و رمز عبور را وارد کن.");return}
+  say("در حال ورود…");const {data,error}=await client.auth.signInWithPassword({email,password});if(error){say(error.message);return}
+  const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await syncDown();
+ };
+ $("gsForgot").onclick=async()=>{const email=$("gsEmail").value.trim();if(!email){say("اول ایمیلت را وارد کن.");return}
+  const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});say(error?"خطا در ارسال ایمیل بازیابی: "+error.message:"اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود.");};
+ $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}showUser(null);say("از حساب خارج شدی.")};
+ client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(syncDown,0)}else showUser(null)});
+ client.auth.getSession().then(({data})=>{if(data.session){showUser(data.session.user);syncDown()}else showUser(null)});
+})();
+</script>
 </body>
 </html>
