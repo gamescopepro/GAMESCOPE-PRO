@@ -849,33 +849,41 @@ render();
 }
 
 
- const GOOGLE_OAUTH_CONFIGURED=false; // Verified in Supabase auth logs: "provider is not enabled".
+ async function googleProviderEnabled(){
+  const response=await fetch("https://axwjiwpwqoykvcbumixy.supabase.co/auth/v1/settings",{
+   method:"GET",headers:{apikey:"sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-"},cache:"no-store"
+  });
+  if(!response.ok)throw new Error("settings_unavailable");
+  const settings=await response.json();
+  return settings?.external?.google===true;
+ }
  async function beginGoogleLogin(){
-  if(!GOOGLE_OAUTH_CONFIGURED){
-   say("ورود با گوگل هنوز در تنظیمات Supabase فعال نشده و برای همین قبلاً خطای 400 می‌داد. برای جلوگیری از صفحهٔ خطای خام، فعلاً اینجا متوقف شد؛ مالک باید Google OAuth را با Client ID و Client Secret در Supabase فعال کند. تا آن زمان گزینهٔ جیمیل با لینک ایمیل قابل استفاده است.");
-   return;
-  }
   const btn=$("gsGoogleLogin");
   if(btn){btn.disabled=true;btn.setAttribute("aria-busy","true");}
-  say("در حال بازکردن صفحهٔ امن ورود Google…");
   try{
+   let enabled=false;
+   try{enabled=await googleProviderEnabled()}catch(e){
+    say("فعلاً نمی‌توان وضعیت Google OAuth را بررسی کرد. اتصال اینترنت را بررسی کن و تنظیمات ورود Google در Supabase را بازبینی کن.");return;
+   }
+   if(!enabled){
+    say("ورود با گوگل هنوز در Supabase فعال نشده است؛ بنابراین خطای 400 را قبل از خروج از سایت متوقف کردم. در Authentication → Sign In / Providers، Google را فعال کن و Client ID و Client Secret معتبر ثبت کن. پس از فعال‌شدن، همین دکمه خودش کار خواهد کرد.");
+    return;
+   }
+   say("در حال بازکردن صفحهٔ امن ورود Google…");
    const {error}=await client.auth.signInWithOAuth({
     provider:"google",
     options:{redirectTo:SITE_URL,queryParams:{prompt:"select_account"}}
    });
    if(error){
     const m=String(error.message||"");
-    if(/provider.*not enabled|unsupported provider|external.*disabled/i.test(m)){
-     say("ورود با گوگل هنوز در Supabase فعال نشده است. باید در Authentication → Sign In / Providers، Google را فعال و Google Client ID و Client Secret را ثبت کنی.");
-    }else if(/redirect.*not allowed|redirect.*url|url.*allow/i.test(m)){
+    if(/redirect.*not allowed|redirect.*url|url.*allow/i.test(m)){
      say("آدرس بازگشت در Supabase مجاز نیست. این آدرس را در Redirect URLs ثبت کن: "+SITE_URL);
     }else{
      say("شروع ورود گوگل ناموفق بود. تنظیمات OAuth گوگل در Supabase را بررسی کن؛ کد خطا: "+m);
     }
    }
   }catch(e){
-   const m=String(e?.message||"");
-   say(/failed to fetch|network|load failed/i.test(m)?"ارتباط با سرویس ورود برقرار نشد؛ اینترنت را بررسی کن.":"ورود گوگل شروع نشد. تنظیمات OAuth گوگل در Supabase را بررسی کن.");
+   say(/failed to fetch|network|load failed/i.test(String(e?.message||""))?"ارتباط با سرویس ورود برقرار نشد؛ اینترنت را بررسی کن.":"ورود گوگل شروع نشد. تنظیمات OAuth گوگل در Supabase را بررسی کن.");
   }finally{
    if(btn){btn.disabled=false;btn.removeAttribute("aria-busy");}
   }
