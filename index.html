@@ -543,6 +543,14 @@ document.getElementById("onlineToggle").addEventListener("click",()=>{
  document.getElementById("onlineToggle").textContent=isHidden?"نمایش کاتالوگ آنلاین":"پنهان‌کردن کاتالوگ آنلاین";
  if(!isHidden&&!box.children.length)loadOnlineGames({query:""});
 });
+window.gamescopeSearchOnlineFromMain=function(){
+ const q=document.getElementById("search").value.trim();
+ if(!q)return;
+ const input=document.getElementById("onlineSearch");if(input)input.value=q;
+ const panel=document.getElementById("onlinePanel");
+ if(panel)panel.scrollIntoView({behavior:"smooth",block:"start"});
+ loadOnlineGames({query:q});
+};
 document.getElementById("onlineSearchBtn").addEventListener("click",()=>loadOnlineGames({query:document.getElementById("onlineSearch").value.trim()}));
 document.getElementById("onlineSearch").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();loadOnlineGames({query:document.getElementById("onlineSearch").value.trim()})}});
 document.getElementById("onlineBrowseBtn").addEventListener("click",()=>{onlineUpcomingMode=false;document.getElementById("onlineSearch").value="";loadOnlineGames({query:""})});
@@ -690,7 +698,10 @@ function render(){
  document.getElementById("listHeading").textContent=filter==="library"?"کتابخانه من":filter==="favorites"?"علاقه‌مندی‌ها":filter==="playing"?"در حال بازی":filter==="completed"?"بازی‌های تمام‌شده":filter==="wishlist"?"فهرست خرید":"بازی‌های پیشنهادی";
  document.getElementById("resultCount").textContent=list.length+" بازی";
  const box=document.getElementById("games");
- if(!list.length){box.innerHTML='<div class="empty" style="grid-column:1/-1">اینجا هنوز بازی‌ای نیست.<br>می‌تونی از «افزودن بازی» استفاده کنی یا فیلتر رو تغییر بدی.</div>'}
+ if(!list.length){
+  const typed=String(query||"").trim();
+  box.innerHTML='<div class="empty" style="grid-column:1/-1">'+(typed?'در فهرست فعلی بازی‌ای با این عبارت پیدا نشد.':'اینجا هنوز بازی‌ای نیست.')+'<br>'+ (typed?'می‌توانی کل اینترنت/کاتالوگ آنلاین بازی‌ها را هم جست‌وجو کنی.':'می‌تونی از «افزودن بازی» استفاده کنی یا فیلتر رو تغییر بدی.')+(typed?'<br><button type="button" id="searchOnlineFallback" style="margin-top:12px">🌐 جست‌وجو در کاتالوگ آنلاین</button>':'')+'</div>';
+ }
  else {const visible=list.slice(0,renderLimit);box.innerHTML=visible.map(g=>`<article class="card"><div class="cover">${g.cover?'<img src="'+esc(g.cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">':esc(g.emoji||"🎮")}</div><div class="card-body"><h4>${esc(g.title)}</h4><div class="meta">${esc(g.genre||"ژانر نامشخص")}</div>${g.platforms?'<div class="meta">🎮 پلتفرم: '+esc(g.platforms)+'</div>':''}${g.publisher?'<div class="meta">🏢 سازنده/ناشر: '+esc(g.publisher)+'</div>':''}${g.releaseDate?'<div class="meta">📅 انتشار: '+esc(g.releaseDate)+'</div>':''}<div class="chips">${g.owned?'<span class="chip">📚 در کتابخانه</span>':'<span class="chip">کاتالوگ</span>'}${g.fav?'<span class="chip">⭐ محبوب</span>':''}${g.releaseStatus==="upcoming"?'<span class="chip">🗓️ به‌زودی</span>':g.releaseStatus==="released"?'<span class="chip">✅ منتشر شده</span>':''}</div><div class="meta">امتیاز منتقدان: <b class="score">${g.critic??"—"}</b> / 10 ${g.rating!==null&&g.rating!==""?' • امتیاز تو: <b class="score">'+esc(g.rating)+'</b>':''}</div>${g.storeUrl&&/^https?:\/\//i.test(g.storeUrl)?'<a href="'+esc(g.storeUrl)+'" target="_blank" rel="noopener noreferrer" class="account-btn secondary" style="font-size:11px;padding:8px">جست‌وجو در PlayStation Store ↗</a>':''}${g.note?'<div class="meta">'+esc(g.note)+'</div>':''}<div class="card-actions"><button onclick="toggleOwned('${esc(g.id)}')">${g.owned?'✓ در کتابخانه':'＋ افزودن'}</button><button class="secondary" onclick="rateGame('${esc(g.id)}')">⭐ امتیاز</button><button class="secondary" onclick="toggleFav('${esc(g.id)}')">${g.fav?'★':'☆'}</button></div>${g.owned?`<select onchange="setStatus('${esc(g.id)}',this.value)"><option ${g.status==="در فهرست علاقه‌مندی"?"selected":""}>در فهرست علاقه‌مندی</option><option ${g.status==="در حال بازی"?"selected":""}>در حال بازی</option><option ${g.status==="تمام‌شده"?"selected":""}>تمام‌شده</option><option ${g.status==="می‌خواهم بخرم"?"selected":""}>می‌خواهم بخرم</option></select><button class="secondary" onclick="editNote('${esc(g.id)}')">📝 یادداشت</button>`:""}</div></article>`).join("");if(list.length>renderLimit){const more=document.createElement("button");more.type="button";more.className="secondary";more.textContent="نمایش بیشتر ("+(list.length-renderLimit)+")";more.style.gridColumn="1/-1";more.onclick=()=>{renderLimit+=48;render()};box.appendChild(more)} }
  const owned=all.filter(g=>g.owned), done=owned.filter(g=>g.status==="تمام‌شده").length, playing=owned.filter(g=>g.status==="در حال بازی").length;
  document.getElementById("profileText").textContent=`در کتابخانه‌ات ${owned.length} بازی داری؛ ${playing} بازی در حال انجام و ${done} بازی تمام‌شده. ${rated.length?"میانگین امتیازهایی که خودت داده‌ای "+(rated.reduce((s,g)=>s+Number(g.rating),0)/rated.length).toFixed(1)+" از ۱۰ است.":"هنوز به بازی‌ها امتیاز نداده‌ای."}`;
@@ -701,6 +712,15 @@ function rateGame(id){let g=getGame(id);let v=prompt("امتیاز خودت به
 function setStatus(id,v){let g=getGame(id);g.status=v;g.owned=true;saveObj(g)}
 function editNote(id){let g=getGame(id);let v=prompt("یادداشت برای "+g.title,g.note||"");if(v===null)return;g.note=v;g.owned=true;saveObj(g)}
 let searchRenderTimer;document.getElementById("search").addEventListener("input",e=>{query=e.target.value;renderLimit=48;clearTimeout(searchRenderTimer);searchRenderTimer=setTimeout(()=>render(),90)});
+document.getElementById("search").addEventListener("keydown",e=>{
+ if(e.key!=="Enter")return;
+ const q=e.target.value.trim();if(!q)return;
+ const localMatch=allGames().some(g=>(String(g.title||"")+" "+String(g.genre||"")).toLowerCase().includes(q.toLowerCase()));
+ if(!localMatch&&typeof window.gamescopeSearchOnlineFromMain==="function"){e.preventDefault();window.gamescopeSearchOnlineFromMain()}
+});
+document.getElementById("games").addEventListener("click",e=>{
+ if(e.target.closest("#searchOnlineFallback")&&typeof window.gamescopeSearchOnlineFromMain==="function")window.gamescopeSearchOnlineFromMain();
+});
 document.getElementById("sort").addEventListener("change",()=>{renderLimit=48;render()});document.getElementById("genreFilter").addEventListener("change",()=>{renderLimit=48;render()});
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");filter=b.dataset.filter;renderLimit=48;render()}));
 document.getElementById("addToggle").onclick=()=>document.getElementById("addPanel").classList.toggle("hidden");
