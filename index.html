@@ -1006,7 +1006,7 @@ render();
  let cache={};
  try{cache=JSON.parse(localStorage.getItem(CACHE_KEY)||"{}")||{}}catch(e){cache={}}
  const codeMap={zh:"zh-CN",fil:"tl",he:"iw"};
- const excluded="#gsWelcome,#gsSettingsEmail,#profileText,.brand h1,.logo,.card h4,#onlineResults h4,.admin-row strong,script,style,noscript,textarea,input,select,code,pre,[contenteditable='true'],[data-no-translate]";
+ const excluded="#gsWelcome,#gsSettingsEmail,#profileText,.brand h1,.logo,.card h4,#onlineResults h4,.admin-row strong,script,style,noscript,textarea,input,code,pre,[contenteditable='true'],[data-no-translate]";
  function langCode(lang){return codeMap[lang]||lang||"en"}
  function isExcluded(el){
   if(!el||!el.closest)return true;
@@ -1055,12 +1055,10 @@ render();
    }
   }catch(e){}
   // If the provider changes the separators, retry these few phrases individually.
-  const out=[];
-  for(const phrase of items){
-   if(run!==revision)return items;
-   try{out.push(await oneTranslation(phrase,lang))}catch(e){out.push(phrase)}
-  }
-  return out;
+  return await Promise.all(items.map(async phrase=>{
+   if(run!==revision)return phrase;
+   try{return await oneTranslation(phrase,lang)}catch(e){return phrase}
+  }));
  }
  async function processNodes(nodes,lang,run){
   const texts=[], seen=new Set();
