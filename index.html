@@ -88,7 +88,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
         </button>
         <button id="gsGuestLogin" class="gs-auth-method guest" type="button"><span aria-hidden="true">👤</span><span data-gs-lang="guest">ورود به‌صورت مهمان</span></button>
        </div>
-       <p class="gs-auth-entry-note">ورود با گوگل و جیمیل هر دو از صفحهٔ امن Google استفاده می‌کنند. رمز گوگل را داخل فرم سایت وارد نکن. برای ورود با ایمیل و رمز همین سایت، فرم پایین را استفاده کن.</p>
+       <p class="gs-auth-entry-note">ورود با گوگل از سرویس امن Google استفاده می‌کند. ورود با جیمیل لینک یک‌بارمصرف به ایمیل می‌فرستد؛ رمز Google را در این سایت وارد نکن. برای حساب‌های ایمیلی موجود می‌توانی از فرم پایین استفاده کنی.</p>
       </section>
       <div class="formgrid">
         <div class="field"><label for="gsUsername">نام کاربری (۳ تا ۲۰ حرف انگلیسی/عدد/_)</label><input id="gsUsername" autocomplete="username" minlength="3" maxlength="20" placeholder="مثلاً gamer_2026"></div>
@@ -841,42 +841,78 @@ render();
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
  loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();paintResendCooldown();
  const callbackParams=new URLSearchParams(window.location.search);const callbackError=callbackParams.get("error_description")||callbackParams.get("error");
- if(callbackError){$("gsResendConfirmation").classList.remove("hidden");say("لینک تأیید یا ورود کامل نشد: "+callbackError+". برای ایمیل تأیید، درخواست ارسال مجدد بده و فقط جدیدترین لینک را باز کن.");}
+ if(callbackError){
+  $("gsResendConfirmation").classList.remove("hidden");
+  const e=String(callbackError).replace(/\+/g," ");
+  const message=/provider is not enabled|provider_not_enabled/i.test(e)?"ورود با گوگل هنوز برای این پروژه فعال نیست. در Supabase وارد Authentication → Sign In / Providers شو، Google را فعال کن و Client ID و Client Secret را ثبت کن.":/redirect.*not allowed|redirect.*url/i.test(e)?"آدرس بازگشت اجازه داده نشده است. Redirect URLs را در Supabase بررسی کن.":"ورود کامل نشد: "+e;
+  setTimeout(()=>{const open=$("openPsnAccount");if(open)open.click();say(message);},120);
+}
 
- async function beginGoogleLogin(mode){
-  const btn=$(mode==="gmail"?"gsGmailLogin":"gsGoogleLogin");
-  const email=$("gsEmail").value.trim();
-  if(mode==="gmail" && email && !/^[^\s@]+@gmail\.com$/i.test(email)){
-   say("برای گزینهٔ جیمیل، یک نشانی @gmail.com وارد کن؛ یا فیلد ایمیل را خالی بگذار تا حساب را در صفحهٔ Google انتخاب کنی.");
-   $("gsEmail").focus();return;
-  }
+
+ async function beginGoogleLogin(){
+  const btn=$("gsGoogleLogin");
   if(btn){btn.disabled=true;btn.setAttribute("aria-busy","true");}
-  say(mode==="gmail"?"در حال بازکردن ورود امن جیمیل…":"در حال بازکردن ورود امن گوگل…");
+  say("در حال بازکردن صفحهٔ امن ورود Google…");
   try{
-   const queryParams={prompt:"select_account"};
-   if(mode==="gmail" && /^[^\s@]+@gmail\.com$/i.test(email))queryParams.login_hint=email;
-   const {error}=await client.auth.signInWithOAuth({provider:"google",options:{redirectTo:SITE_URL,queryParams}});
+   const {error}=await client.auth.signInWithOAuth({
+    provider:"google",
+    options:{redirectTo:SITE_URL,queryParams:{prompt:"select_account"}}
+   });
    if(error){
     const m=String(error.message||"");
     if(/provider.*not enabled|unsupported provider|external.*disabled/i.test(m)){
-     say("ورود گوگل هنوز در Supabase فعال نشده است. برای فعال‌کردن آن باید در Authentication → Sign In / Providers، گزینهٔ Google را روشن کنی و Google Client ID و Client Secret را وارد کنی.");
+     say("ورود با گوگل هنوز در Supabase فعال نشده است. باید در Authentication → Sign In / Providers، Google را فعال و Google Client ID و Client Secret را ثبت کنی.");
     }else if(/redirect.*not allowed|redirect.*url|url.*allow/i.test(m)){
-     say("آدرس بازگشت در Supabase مجاز نیست. در Authentication → URL Configuration، همین آدرس را به Redirect URLs اضافه کن: "+SITE_URL);
-    }else if(/invalid_client|client.?id|client.?secret|oauth/i.test(m)){
-     say("تنظیمات OAuth گوگل کامل یا صحیح نیست. Google Client ID و Client Secret را در Supabase بررسی کن.");
+     say("آدرس بازگشت در Supabase مجاز نیست. این آدرس را در Redirect URLs ثبت کن: "+SITE_URL);
     }else{
-     say("ورود با "+(mode==="gmail"?"جیمیل":"گوگل")+" شروع نشد. لطفاً اتصال اینترنت را بررسی کن؛ جزئیات فنی: "+m);
+     say("شروع ورود گوگل ناموفق بود. تنظیمات OAuth گوگل در Supabase را بررسی کن؛ کد خطا: "+m);
     }
    }
   }catch(e){
    const m=String(e?.message||"");
-   say(/failed to fetch|network|load failed/i.test(m)?"اتصال به سرویس ورود برقرار نشد؛ اینترنت را بررسی و دوباره امتحان کن.":"ورود امن شروع نشد. تنظیمات OAuth گوگل در Supabase را بررسی کن.");
+   say(/failed to fetch|network|load failed/i.test(m)?"ارتباط با سرویس ورود برقرار نشد؛ اینترنت را بررسی کن.":"ورود گوگل شروع نشد. تنظیمات OAuth گوگل در Supabase را بررسی کن.");
   }finally{
    if(btn){btn.disabled=false;btn.removeAttribute("aria-busy");}
   }
  }
- $("gsGoogleLogin").addEventListener("click",()=>beginGoogleLogin("google"));
- $("gsGmailLogin").addEventListener("click",()=>beginGoogleLogin("gmail"));
+ $("gsGoogleLogin").addEventListener("click",beginGoogleLogin);
+ const GMAIL_MAGIC_COOLDOWN_KEY="gamescope_gmail_magic_cooldown_until_v1";
+ $("gsGmailLogin").addEventListener("click",async()=>{
+  const email=$("gsEmail").value.trim();
+  if(!/^[^\s@]+@gmail\.com$/i.test(email)){
+   say("برای ورود با جیمیل، آدرس کامل @gmail.com را در کادر «ایمیل» وارد کن. رمز حساب گوگل را وارد نکن.");
+   $("gsEmail").focus();$("gsEmail").scrollIntoView({behavior:"smooth",block:"center"});return;
+  }
+  let until=0;try{until=Number(localStorage.getItem(GMAIL_MAGIC_COOLDOWN_KEY)||0)}catch(e){}
+  if(until>Date.now()){
+   const seconds=Math.ceil((until-Date.now())/1000);
+   say("برای جلوگیری از محدودیت ایمیل، "+seconds+" ثانیه صبر کن؛ ایمیل ورود قبلی را بررسی کن.");return;
+  }
+  const btn=$("gsGmailLogin");btn.disabled=true;btn.setAttribute("aria-busy","true");
+  say("در حال ارسال لینک ورود امن به "+email+"…");
+  try{
+   const {error}=await client.auth.signInWithOtp({
+    email,
+    options:{emailRedirectTo:SITE_URL,shouldCreateUser:true}
+   });
+   if(error){
+    const m=String(error.message||"");
+    if(/rate limit|too many requests|over_email_send_rate_limit|email rate limit/i.test(m)){
+     try{localStorage.setItem(GMAIL_MAGIC_COOLDOWN_KEY,String(Date.now()+300000))}catch(e){}
+     say("ارسال ایمیل موقتاً محدود شده است. پنج دقیقه صبر کن و صندوق ورودی یا هرزنامه را بررسی کن؛ پشت‌سرهم درخواست نده.");
+    }else if(/redirect.*not allowed|redirect.*url|url.*allow/i.test(m)){
+     say("آدرس بازگشت ایمیل ورود در Supabase مجاز نیست. این آدرس را در Redirect URLs اضافه کن: "+SITE_URL);
+    }else{
+     say("ارسال لینک ورود انجام نشد. ایمیل را بررسی کن؛ جزئیات: "+m);
+    }
+    return;
+   }
+   try{localStorage.setItem(GMAIL_MAGIC_COOLDOWN_KEY,String(Date.now()+60000))}catch(e){}
+   say("لینک ورود برای "+email+" درخواست شد. صندوق ورودی و هرزنامه را بررسی کن و فقط جدیدترین لینک را باز کن. بعد از بازکردن لینک، سایت تو را وارد می‌کند.");
+  }catch(e){
+   say(/failed to fetch|network|load failed/i.test(String(e?.message||""))?"ارتباط با سرویس ایمیل برقرار نشد؛ اینترنت را بررسی کن.":"ارسال لینک ورود ناموفق بود؛ کمی بعد دوباره امتحان کن.");
+  }finally{btn.disabled=false;btn.removeAttribute("aria-busy");}
+ });
  $("gsGuestLogin").addEventListener("click",()=>{
   try{sessionStorage.setItem("gamescope_entry_choice_v1","guest")}catch(e){}
   $("gsAuthState").textContent="مهمان";
