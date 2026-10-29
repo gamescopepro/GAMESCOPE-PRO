@@ -534,6 +534,15 @@ render();
  const client=window.supabase.createClient("https://axwjiwpwqoykvcbumixy.supabase.co","sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-");
  const $=id=>document.getElementById(id), say=t=>{$("gsAuthMessage").textContent=t};
  let currentUser=null, syncing=false, isOwner=false;
+ const RESEND_COOLDOWN_KEY="gamescope_email_resend_until_v1";let resendCooldownTimer=null;
+ function paintResendCooldown(){
+  if(resendCooldownTimer)clearTimeout(resendCooldownTimer);
+  const btn=$("gsResendConfirmation");if(!btn)return;
+  const seconds=Math.ceil((Number(localStorage.getItem(RESEND_COOLDOWN_KEY)||0)-Date.now())/1000);
+  if(seconds>0){btn.disabled=true;btn.textContent="ارسال دوباره پس از "+seconds.toLocaleString("fa-IR")+" ثانیه";resendCooldownTimer=setTimeout(paintResendCooldown,1000);}
+  else{btn.disabled=false;btn.textContent="📩 ارسال دوباره ایمیل تأیید";}
+ }
+ function startResendCooldown(seconds){localStorage.setItem(RESEND_COOLDOWN_KEY,String(Date.now()+seconds*1000));paintResendCooldown();}
  function setOwnerUI(value){
   isOwner=!!value;window.gamescopeOwnerAuthenticated=isOwner;
   $("gsOwnerMenuWrap").classList.toggle("hidden",!isOwner);
@@ -771,19 +780,25 @@ render();
  $("gsResendConfirmation").onclick=async()=>{
   const email=$("gsEmail").value.trim();if(!email){say("ابتدا ایمیل حساب را وارد کن.");$("gsEmail").focus();return}
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){say("فرمت ایمیل معتبر نیست.");return}
+  const until=Number(localStorage.getItem(RESEND_COOLDOWN_KEY)||0);
+  if(until>Date.now()){paintResendCooldown();say("برای جلوگیری از محدودیت ارسال، کمی صبر کن و سپس فقط یک‌بار درخواست بده.");return}
   const btn=$("gsResendConfirmation");btn.disabled=true;btn.textContent="در حال ارسال…";
   try{
    const {error}=await client.auth.resend({type:"signup",email,options:{emailRedirectTo:SITE_URL}});
-   if(error){say(/rate limit|too many requests|over_email_send_rate_limit/i.test(error.message||"")?"Supabase به‌دلیل درخواست‌های زیاد، ارسال ایمیل را موقتاً محدود کرده است. فعلاً دوباره درخواست نده؛ بعداً یک‌بار امتحان کن.":"ارسال مجدد ایمیل ناموفق بود: "+error.message);return}
-   say("درخواست ایمیل تأیید ارسال شد. فقط جدیدترین ایمیل را باز کن؛ لینک‌های قدیمی ممکن است منقضی شده باشند.");
-  }catch(e){say("ارتباط با سرویس ایمیل برقرار نشد: "+(e?.message||"خطای شبکه"))}
-  finally{btn.disabled=false;btn.textContent="📩 ارسال دوباره ایمیل تأیید"}
+   if(error){
+    if(/rate limit|too many requests|over_email_send_rate_limit/i.test(error.message||"")){startResendCooldown(300);say("Supabase به‌دلیل درخواست‌های زیاد، ایمیل را موقتاً محدود کرده است. پنج دقیقه صبر کن و پشت‌سرهم درخواست نده.");}
+    else{startResendCooldown(60);say("ارسال مجدد ایمیل ناموفق بود: "+error.message);}
+    return;
+   }
+   startResendCooldown(60);say("درخواست ایمیل تأیید ارسال شد. فقط جدیدترین ایمیل را باز کن؛ لینک‌های قدیمی ممکن است منقضی شده باشند.");
+  }catch(e){startResendCooldown(60);say("ارتباط با سرویس ایمیل برقرار نشد: "+(e?.message||"خطای شبکه"))}
+  finally{paintResendCooldown()}
  };
 
  $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}showUser(null);say("از حساب خارج شدی.")};
  client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
- loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();
+ loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();paintResendCooldown();
  const callbackParams=new URLSearchParams(window.location.search);const callbackError=callbackParams.get("error_description")||callbackParams.get("error");
  if(callbackError){$("gsResendConfirmation").classList.remove("hidden");say("لینک تأیید یا ورود کامل نشد: "+callbackError+". برای ایمیل تأیید، درخواست ارسال مجدد بده و فقط جدیدترین لینک را باز کن.");}
 })();
