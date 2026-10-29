@@ -352,6 +352,7 @@ async function runFullUpdate({silent=false}={}){
  if(onlineBusy){if(!silent)setOnlineStatus("یک بررسی در حال انجام است؛ لطفاً صبر کن.");return}
  const key=getRawgKey();
  if(!key){setOnlineStatus("برای بررسی آنلاین، کلید RAWG را وارد و ذخیره کن.");return}
+ onlineBusy=true;const refreshButton=document.getElementById("onlineRefreshBtn");if(refreshButton)refreshButton.disabled=true;
  const now=new Date(), dateOnly=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
  const future=new Date(now);future.setFullYear(future.getFullYear()+3);
  const recentStart=new Date(now);recentStart.setDate(recentStart.getDate()-45);
@@ -398,7 +399,8 @@ async function runFullUpdate({silent=false}={}){
   if(typeof window.gamescopePublishRawgResults==="function"){
    try{
     globalSync=await window.gamescopePublishRawgResults(futureGames,recentGames);
-    if(globalSync?.items?.length)changes.unshift(...globalSync.items);
+    if(globalSync?.published){changes.length=0;changes.push(...(globalSync.items||[]));}
+    else if(globalSync?.items?.length)changes.unshift(...globalSync.items);
    }catch(syncError){globalSync={published:false,added:0,updated:0,items:[],error:syncError?.message||"خطای ذخیره در کاتالوگ عمومی"};}
   }
   localStorage.setItem(UPDATE_SNAPSHOT_KEY,JSON.stringify({future:currentFuture,recent:currentRecent,checkedAt:now.toISOString()}));
@@ -423,7 +425,7 @@ async function runFullUpdate({silent=false}={}){
   setUpdateProgress(100,"بررسی متوقف شد؛ خطا رخ داد");
   setOnlineStatus("به‌روزرسانی کامل نشد: "+(err.message||"خطای شبکه")+"؛ اتصال اینترنت، کلید API و محدودیت درخواست‌ها را بررسی کن.");
   document.getElementById("updateLog").textContent="این بررسی کامل نشد. گزارش قبلی حفظ شد؛ پس از رفع خطا دوباره تلاش کن.";
- }
+ }finally{onlineBusy=false;if(refreshButton)refreshButton.disabled=false;}
 }
 document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFullUpdate());
 // Automatic global synchronization is owner-only and throttled to avoid repeated RAWG requests.
@@ -766,6 +768,8 @@ render();
  client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
  loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();
+ const callbackParams=new URLSearchParams(window.location.search);const callbackError=callbackParams.get("error_description")||callbackParams.get("error");
+ if(callbackError){$("gsResendConfirmation").classList.remove("hidden");say("لینک تأیید یا ورود کامل نشد: "+callbackError+". برای ایمیل تأیید، درخواست ارسال مجدد بده و فقط جدیدترین لینک را باز کن.");}
 })();
 </script>
 </body>
