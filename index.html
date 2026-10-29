@@ -1000,7 +1000,7 @@ render();
 (function(){
  // Batch translation engine with a bounded request queue, resilient segment parsing,
  // local cache, and MutationObserver support for newly-rendered UI.
- const CACHE_KEY="gamescope_ui_translations_v3";
+ const CACHE_KEY="gamescope_ui_translations_v4";
  const origins=new Map(), attrOrigins=new Map();
  let activeLang="fa", revision=0, observer=null, pendingTimer=0;
  let cache={};
@@ -1039,88 +1039,70 @@ render();
   if(!Array.isArray(data)||!Array.isArray(data[0]))throw new Error("Unexpected translation response");
   return data[0].map(part=>Array.isArray(part)?(part[0]||""):"").join("");
  }
- async function oneTranslation(text,lang,signal){
-  const p=new URLSearchParams({client:"gtx",sl:"fa",tl:langCode(lang),dt:"t",ie:"UTF-8",oe:"UTF-8",q:text});
-  const response=await fetch("https://translate.googleapis.com/translate_a/single?"+p.toString(),{
-   method:"GET",cache:"no-store",signal,headers:{"Accept":"application/json,text/plain,*/*"}
-  });
-  if(!response.ok)throw new Error("Translation service returned "+response.status);
-  const contentType=response.headers.get("content-type")||"";
-  if(!contentType.includes("json"))throw new Error("Translation service did not return JSON");
-  return parseResponse(await response.json());
- }
- function splitBatch(translated,items,mode){
-  const regex=mode==="a"?/⟦GSSEG(\d+)⟧/g:/###GSCUT(\d+)###/g;
-  const matches=[...translated.matchAll(regex)];
-  if(matches.length!==items.length)return null;
-  const out=[];
-  for(let i=0;i<matches.length;i++){
-   if(Number(matches[i][1])!==i)return null;
-   const from=matches[i].index+matches[i][0].length;
-   const to=i+1<matches.length?matches[i+1].index:translated.length;
-   const part=translated.slice(from,to).replace(/^\s*[:：\-–]?\s*/,"").trim();
-   if(!part)return null;
-   out.push(part);
+ async function fetchBatch(items,lang,run){
+  const params=new URLSearchParams({client:"dict-chrome-ex",sl:"auto",tl:langCode(lang)});
+  items.forEach(text=>params.append("q",text));
+  const url="https://translate.googleapis.com/translate_a/t?"+params.toString();
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  let data;
+  try{
+   const response=await fetch(url,{method:"GET",cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json,text/plain,*/*"}});
+   if(!response.ok)throw new Error("Translation service returned "+response.status);
+   data=await response.json();
+  }finally{clearTimeout(timer)}
+  if(run!==revision)return items;
+  if(!Array.isArray(data))throw new Error("Unexpected translation response");
+  let translations;
+  if(data.length===items.length){
+   translations=data.map(entry=>Array.isArray(entry)?entry[0]:entry);
+  }else if(items.length===1&&Array.isArray(data[0])){
+   translations=[data[0][0]];
+  }else{
+   throw new Error("Translation count mismatch");
   }
-  return out;
+  if(translations.length!==items.length)throw new Error("Translation count mismatch");
+  return translations.map((value,index)=>{
+   const translated=String(value==null?"":value).trim();
+   // Never cache an empty result; preserve the original phrase if service returns no text.
+   return translated||items[index];
+  });
  }
  async function requestBatch(items,lang,run){
-  const attempts=[
-   {mode:"a",text:items.map((t,i)=>" "+SEP_A+i+"⟧ "+t).join("\n")},
-   {mode:"b",text:items.map((t,i)=>" "+SEP_B+i+"### "+t).join("\n")}
-  ];
-  for(const attempt of attempts){
+  try{return await fetchBatch(items,lang,run)}catch(error){
    if(run!==revision)return items;
-   try{
-    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
-    let translated;
-    try{translated=await oneTranslation(attempt.text,lang,controller.signal)}finally{clearTimeout(timer)}
-    if(run!==revision)return items;
-    const parsed=splitBatch(translated,items,attempt.mode);
-    if(parsed)return parsed;
-   }catch(e){}
-  }
-  // Final fallback is strictly limited to the current small chunk. No unbounded fan-out.
-  const results=new Array(items.length);
-  let next=0;
-  async function worker(){
-   while(next<items.length&&run===revision){
-    const index=next++, text=items[index];
-    let value=text;
-    for(let attempt=0;attempt<2&&run===revision;attempt++){
-     try{
-      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
-      try{value=await oneTranslation(text,lang,controller.signal)}finally{clearTimeout(timer)}
-      if(value&&value!==text)break;
-     }catch(e){}
-     if(attempt===0)await new Promise(resolve=>setTimeout(resolve,450));
+   // A batch may be rejected when the service limits URL size. Retry only this small
+   // chunk with a maximum of two concurrent single-item requests.
+   const results=new Array(items.length);let next=0;
+   async function worker(){
+    while(next<items.length&&run===revision){
+     const index=next++,text=items[index];let translated=text;
+     for(let attempt=0;attempt<2&&run===revision;attempt++){
+      try{
+       const one=await fetchBatch([text],lang,run);
+       translated=one[0]||text;
+       if(translated!==text||/[A-Za-z\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u0600-\u06FF]/.test(text))break;
+      }catch(e){}
+      if(attempt===0)await new Promise(resolve=>setTimeout(resolve,500));
+     }
+     results[index]=translated||text;
     }
-    results[index]=String(value||text).trim()||text;
    }
+   await Promise.all(Array.from({length:Math.min(2,items.length)},worker));
+   return results.map((value,index)=>value||items[index]);
   }
-  await Promise.all(Array.from({length:Math.min(2,items.length)},worker));
-  return results.map((value,i)=>value||items[i]);
  }
- function makeChunks(texts,maxItems=12,maxChars=760){
-  const chunks=[];let batch=[],size=0;
+ function makeChunks(texts,maxItems=60,maxUrlChars=6200){
+  const chunks=[];let batch=[],size=140;
   for(const text of texts){
-   const extra=text.length+32;
-   if(batch.length&&(batch.length>=maxItems||size+extra>maxChars)){chunks.push(batch);batch=[];size=0}
+   // Repeated q= parameters let the service return one separate result per phrase.
+   // Measure URL-encoded length so Persian/Arabic phrases do not produce oversized URLs.
+   const extra=encodeURIComponent(text).length+3;
+   if(batch.length&&(batch.length>=maxItems||size+extra>maxUrlChars)){chunks.push(batch);batch=[];size=140}
+   if(extra>maxUrlChars-140){chunks.push([text]);continue}
    batch.push(text);size+=extra;
   }
   if(batch.length)chunks.push(batch);
   return chunks;
- }
- async function runChunks(chunks,lang,run,onResult){
-  // Two concurrent requests keep initial translation quick without flooding the free endpoint.
-  for(let i=0;i<chunks.length;i+=2){
-   if(run!==revision)return;
-   await Promise.all(chunks.slice(i,i+2).map(async chunk=>{
-    const translated=await requestBatch(chunk,lang,run);
-    if(run!==revision)return;
-    chunk.forEach((text,j)=>onResult(text,String(translated[j]||text).trim()||text));
-   }));
-  }
  }
  async function processNodes(nodes,lang,run){
   const unique=[],seen=new Set(),nodeOriginals=[];
@@ -1134,7 +1116,7 @@ render();
    if(cache[key])continue;
    if(!seen.has(trimmed)){seen.add(trimmed);unique.push(trimmed)}
   }
-  const chunks=makeChunks(unique);
+  const chunks=makeChunks(unique,60,6200);
   await runChunks(chunks,lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
   if(run!==revision)return;
   for(const entry of nodeOriginals){
@@ -1159,7 +1141,7 @@ render();
     if(!cache[key]&&!seen.has(original)){seen.add(original);unique.push(original)}
    }
   }
-  await runChunks(makeChunks(unique,10,650),lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
+  await runChunks(makeChunks(unique,60,6200),lang,run,(text,value)=>{cache[cacheKey(lang,text)]=value});
   if(run!==revision)return;
   for(const item of work){
    if(!item.el.isConnected)continue;
