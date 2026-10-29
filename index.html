@@ -998,6 +998,174 @@ render();
 
 <script>
 (function(){
+ // Full-page UI localization for every language in the selector. Translations are cached locally.
+ const CACHE_KEY="gamescope_ui_translations_v2";
+ const separator="ZXQGSSEP9BOUNDARYQXZ";
+ const origins=new Map(), attrOrigins=new Map();
+ let activeLang="fa", revision=0, observer=null, busy=false, pendingTimer=0;
+ let cache={};
+ try{cache=JSON.parse(localStorage.getItem(CACHE_KEY)||"{}")||{}}catch(e){cache={}}
+ const codeMap={zh:"zh-CN",fil:"tl",he:"iw"};
+ const excluded="#gsWelcome,#gsSettingsEmail,#profileText,.brand h1,.logo,.card h4,#onlineResults h4,.admin-row strong,script,style,noscript,textarea,input,select,code,pre,[contenteditable='true'],[data-no-translate]";
+ function langCode(lang){return codeMap[lang]||lang||"en"}
+ function isExcluded(el){
+  if(!el||!el.closest)return true;
+  if(el.closest(excluded))return true;
+  const langSelect=el.closest("#gsWelcomeLanguage,#gsSettingsLanguage");
+  if(langSelect)return true;
+  return false;
+ }
+ function textEligible(node){
+  if(!node||node.nodeType!==Node.TEXT_NODE||!node.parentElement||isExcluded(node.parentElement))return false;
+  const value=node.nodeValue||"";
+  if(!value.trim()||value.trim().length>320||/@|https?:\/\/|www\./i.test(value))return false;
+  return true;
+ }
+ function attrEligible(el,attr){
+  if(!el||isExcluded(el))return false;
+  if(el.matches("#gsWelcomeLanguage,#gsSettingsLanguage"))return false;
+  const value=el.getAttribute(attr)||"";
+  return !!value.trim()&&value.length<240&&!/@|https?:\/\/|www\./i.test(value);
+ }
+ function rememberText(node){if(!origins.has(node))origins.set(node,node.nodeValue)}
+ function rememberAttr(el,attr){const key=el.getAttribute("data-gs-i18n-node")||"";let rec=attrOrigins.get(el);if(!rec){rec={};attrOrigins.set(el,rec)}if(!(attr in rec))rec[attr]=el.getAttribute(attr)}
+ function cacheKey(lang,text){return lang+"§"+text}
+ function saveCache(){
+  try{const keys=Object.keys(cache);if(keys.length>2600){for(const k of keys.slice(0,keys.length-2400))delete cache[k]}localStorage.setItem(CACHE_KEY,JSON.stringify(cache))}catch(e){}
+ }
+ function parseResponse(data){
+  if(!Array.isArray(data)||!Array.isArray(data[0]))throw new Error("Unexpected translation response");
+  return data[0].map(part=>Array.isArray(part)?(part[0]||""):"").join("");
+ }
+ async function oneTranslation(text,lang){
+  const p=new URLSearchParams({client:"gtx",sl:"auto",tl:langCode(lang),dt:"t",q:text});
+  const response=await fetch("https://translate.googleapis.com/translate_a/single?"+p.toString(),{cache:"force-cache"});
+  if(!response.ok)throw new Error("Translation service unavailable");
+  return parseResponse(await response.json());
+ }
+ async function translateBatch(items,lang,run){
+  const joined=items.map((t,i)=>" "+separator+i+"X "+t).join("\n");
+  try{
+   const translated=await oneTranslation(joined,lang);
+   const parts=translated.split(new RegExp(separator+"(\\d+)X"));
+   const byIndex={};
+   for(let i=1;i<parts.length;i+=2)byIndex[Number(parts[i])]=(parts[i+1]||"").trim();
+   if(items.every((_,i)=>typeof byIndex[i]==="string"&&byIndex[i].length>0)){
+    return items.map((_,i)=>byIndex[i]);
+   }
+  }catch(e){}
+  // If the provider changes the separators, retry these few phrases individually.
+  const out=[];
+  for(const phrase of items){
+   if(run!==revision)return items;
+   try{out.push(await oneTranslation(phrase,lang))}catch(e){out.push(phrase)}
+  }
+  return out;
+ }
+ async function processNodes(nodes,lang,run){
+  const texts=[], seen=new Set();
+  for(const node of nodes){
+   if(!textEligible(node)||origins.has(node))continue;
+   rememberText(node);
+   const original=origins.get(node).trim();
+   const key=cacheKey(lang,original);
+   if(cache[key]){node.nodeValue=(origins.get(node)||"").replace(original,cache[key]);continue}
+   if(!seen.has(original)){seen.add(original);texts.push(original)}
+  }
+  const lookup=new Map();
+  const chunks=[];let batch=[],size=0;
+  for(const t of texts){if(batch.length>=5||size+t.length>1200){if(batch.length)chunks.push(batch);batch=[];size=0}batch.push(t);size+=t.length}
+  if(batch.length)chunks.push(batch);
+  for(const chunk of chunks){
+   if(run!==revision)return;
+   let translated=await translateBatch(chunk,lang,run);
+   if(run!==revision)return;
+   chunk.forEach((t,i)=>{const result=(translated[i]||t).trim()||t;lookup.set(t,result);cache[cacheKey(lang,t)]=result});
+  }
+  if(run!==revision)return;
+  for(const node of nodes){
+   if(!origins.has(node)||!node.isConnected)continue;
+   const original=origins.get(node)||"", trimmed=original.trim();
+   const result=cache[cacheKey(lang,trimmed)]||lookup.get(trimmed);
+   if(result)node.nodeValue=original.replace(trimmed,result);
+  }
+  if(texts.length)saveCache();
+ }
+ async function processAttributes(elements,lang,run){
+  const work=[];
+  for(const el of elements){
+   for(const attr of ["placeholder","title","aria-label"]){
+    if(!attrEligible(el,attr))continue;
+    if(!attrOrigins.has(el))attrOrigins.set(el,{});
+    const record=attrOrigins.get(el);
+    if(!(attr in record))record[attr]=el.getAttribute(attr);
+    const original=record[attr], key=cacheKey(lang,original);
+    if(cache[key]){el.setAttribute(attr,cache[key]);continue}
+    work.push({el,attr,original});
+   }
+  }
+  const unique=[...new Set(work.map(x=>x.original))];
+  const lookup=new Map();
+  const chunks=[];let batch=[],size=0;
+  for(const t of unique){if(batch.length>=5||size+t.length>1000){if(batch.length)chunks.push(batch);batch=[];size=0}batch.push(t);size+=t.length}
+  if(batch.length)chunks.push(batch);
+  for(const chunk of chunks){
+   if(run!==revision)return;
+   const translated=await translateBatch(chunk,lang,run);
+   if(run!==revision)return;
+   chunk.forEach((t,i)=>{const result=(translated[i]||t).trim()||t;lookup.set(t,result);cache[cacheKey(lang,t)]=result});
+  }
+  for(const item of work){if(run!==revision)return;if(item.el.isConnected)item.el.setAttribute(item.attr,cache[cacheKey(lang,item.original)]||lookup.get(item.original)||item.original)}
+  if(unique.length)saveCache();
+ }
+ function walk(root){
+  const nodes=[],elements=[];
+  if(!root)return {nodes,elements};
+  if(root.nodeType===Node.TEXT_NODE){nodes.push(root);return {nodes,elements}}
+  if(root.nodeType===Node.ELEMENT_NODE)elements.push(root);
+  if(root.querySelectorAll){
+   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+   let node;while((node=walker.nextNode()))nodes.push(node);
+   elements.push(...root.querySelectorAll("[placeholder],[title],[aria-label]"));
+  }
+  return {nodes,elements};
+ }
+ async function translateRoot(root,run){
+  const found=walk(root);
+  await processNodes(found.nodes,activeLang,run);
+  await processAttributes(found.elements,activeLang,run);
+ }
+ function restoreOriginals(){
+  if(observer)observer.disconnect();
+  for(const [node,original] of origins){if(node.isConnected)node.nodeValue=original}
+  for(const [el,attrs] of attrOrigins){if(el.isConnected)for(const [attr,value] of Object.entries(attrs)){if(value==null)el.removeAttribute(attr);else el.setAttribute(attr,value)}}
+  origins.clear();attrOrigins.clear();
+  if(observer)observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","title","aria-label"]});
+ }
+ window.gamescopeTranslatePage=function(lang){
+  activeLang=lang||"fa";const run=++revision;
+  restoreOriginals();
+  if(pendingTimer)clearTimeout(pendingTimer);
+  translateRoot(document.body,run).catch(()=>{});
+ };
+ observer=new MutationObserver(records=>{
+  if(busy)return;
+  const roots=[];
+  for(const record of records){
+   if(record.type==="attributes"){if(record.target&&!isExcluded(record.target))roots.push(record.target)}
+   else if(record.type==="characterData"){if(!origins.has(record.target)&&textEligible(record.target))roots.push(record.target)}
+   else for(const node of record.addedNodes){if(node.nodeType===Node.TEXT_NODE||node.nodeType===Node.ELEMENT_NODE)roots.push(node)}
+  }
+  if(!roots.length)return;
+  clearTimeout(pendingTimer);
+  pendingTimer=setTimeout(()=>{
+   const run=revision;
+   (async()=>{for(const root of roots){if(run!==revision)return;await translateRoot(root,run)}})().catch(()=>{});
+  },120);
+ });
+ observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","title","aria-label"]});
+})();
+(function(){
  const selects=[document.getElementById("gsWelcomeLanguage"),document.getElementById("gsSettingsLanguage")].filter(Boolean), select=selects[0], key="gamescope_language_v1";
  const rtl=new Set(["fa","ar","ur","he"]);
  const tr={
@@ -1027,6 +1195,7 @@ render();
   [["addToggle","add"],["exportBtn","export"],["importBtn","import"]].forEach(([id,k])=>{const el=document.getElementById(id);if(el)el.textContent=t[k]});
   const online=document.querySelector("#onlinePanel .section-title h3");if(online)online.textContent=t.online;
   if(save){try{localStorage.setItem(key,lang)}catch(e){}}
+  if(typeof window.gamescopeTranslatePage==="function")window.gamescopeTranslatePage(lang);
  }
  selects.forEach(el=>el.addEventListener("change",()=>apply(el.value,true)));
  let saved="fa";try{saved=localStorage.getItem(key)||"fa"}catch(e){}
