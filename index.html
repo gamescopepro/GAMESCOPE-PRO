@@ -762,7 +762,7 @@ render();
   applySiteSettings(row);adminStatus("متن صفحهٔ اصلی برای همهٔ کاربران ذخیره شد.");
  });
  function showUser(user,username){
-  currentUser=user;if(user)window.dispatchEvent(new Event("gamescope-authenticated"));$("gsAuthForms").classList.toggle("hidden",!!user);$("gsAuthUser").classList.toggle("hidden",!user);$("gsOwnerGate").classList.add("hidden");
+  currentUser=user;window.gamescopeSignedIn=!!user;if(user)window.dispatchEvent(new Event("gamescope-authenticated"));$("gsAuthForms").classList.toggle("hidden",!!user);$("gsAuthUser").classList.toggle("hidden",!user);$("gsOwnerGate").classList.add("hidden");
   $("gsAuthState").textContent=user?"متصل و همگام‌سازی فعال":"وارد نشده‌ای";
   if(!user){setOwnerUI(false);$("gsOwnerPanel")?.classList.add("hidden");if($("gsOwnerMessage"))$("gsOwnerMessage").textContent="برای دسترسی ویژه، از بخش ورود اختصاصی مالک استفاده کن."} if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! کتابخانه حسابت در فضای ابری ذخیره می‌شود.";
  }
