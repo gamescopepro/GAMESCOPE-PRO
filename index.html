@@ -414,7 +414,7 @@ function searchVariants(query){
  return [...new Set(variants.map(x=>String(x||"").trim()).filter(Boolean))].slice(0,6);
 }
 function scoreGameSearchResult(gameName,query,variants){
- const name=normalizeGameName(gameName),compactName=name.replace(/\s/g,"");
+ const name=stripSearchNoise(gameName),compactName=name.replace(/\s/g,"");
  if(!name)return 1000;
  const canonical=canonicalKnownGameQuery(query);
  const target=normalizeGameName(stripSearchNoise(canonical||query)),compactTarget=target.replace(/\s/g,"");
@@ -445,7 +445,7 @@ function scoreGameSearchResult(gameName,query,variants){
   if(best.index>=0){matched++;used.add(best.index);score+=best.dist*4}
  }
  if(matched===queryTokens.length)return 25+score+Math.abs(nameTokens.length-queryTokens.length)*0.35;
- if(queryTokens.length>=3&&matched>=queryTokens.length-1&&matched>=2)return 55+score+(queryTokens.length-matched)*12+Math.abs(nameTokens.length-queryTokens.length)*0.35;
+ if(queryTokens.length>=4&&matched>=queryTokens.length-1&&matched>=3)return 55+score+(queryTokens.length-matched)*12+Math.abs(nameTokens.length-queryTokens.length)*0.35;
  return 1000;
 }
 window.gamescopeScoreGameSearchResult=(name,query)=>scoreGameSearchResult(name,query,searchVariants(query));
