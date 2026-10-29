@@ -320,15 +320,28 @@ function normalizeGameName(value){
 }
 const GAME_SEARCH_ALIASES=[
  {canonical:"Phantom Blade Zero",aliases:["phantom blade zero","phantom blade ziro","phantombladezero","phantom blade: zero","phantomblade ziro","phantom blade 0","phantom blade zer0"]},
- {canonical:"Grand Theft Auto VI",aliases:["gta vi","gta 6","gta6","grand theft auto 6","grand theft auto vi"]},
- {canonical:"EA SPORTS FC 27",aliases:["fc27","fc 27","ea sports fc27","ea sports fc 27","fifa 27","fifa27"]}
+ {canonical:"Grand Theft Auto VI",aliases:["gta vi","gta 6","gta6","grand theft auto 6","grand theft auto vi","grand theft auto six"]},
+ {canonical:"EA SPORTS FC 27",aliases:["fc27","fc 27","ea sports fc27","ea sports fc 27","fifa 27","fifa27"]},
+ {canonical:"Red Dead Redemption 2",aliases:["rdr2","rdr 2","red dead 2","red dead redemption ii"]},
+ {canonical:"The Last of Us",aliases:["tlou","the last of us","last of us"]},
+ {canonical:"God of War",aliases:["gow","godofwar","god of war"]},
+ {canonical:"Horizon Zero Dawn",aliases:["hzd","horizon zero dawn"]},
+ {canonical:"Horizon Forbidden West",aliases:["hfw","horizon forbidden west"]},
+ {canonical:"Marvel's Spider-Man 2",aliases:["spiderman 2","spider man 2","marvel spider man 2","marvels spiderman 2"]},
+ {canonical:"Resident Evil 4",aliases:["re4","resident evil four","resident evil 4 remake"]},
+ {canonical:"Cyberpunk 2077",aliases:["cyberpunk","cyber punk 2077","cyberpnuk 2077"]},
+ {canonical:"Elden Ring",aliases:["eldenring","elden ring"]},
+ {canonical:"Call of Duty",aliases:["cod","callofduty","call of duty"]}
 ];
+const SEARCH_NOISE_WORDS=new Set(["game","games","video","videogame","videogames","please","find","search","for","on","in","playing","play","ps5","ps4","ps3","ps2","ps1","playstation","pc","xbox","switch","nintendo","steam","release","released","upcoming","gameplay","title"]);
+function stripSearchNoise(value){
+ return normalizeGameName(value).split(" ").filter(word=>word&&!SEARCH_NOISE_WORDS.has(word)).join(" ").trim();
+}
 function canonicalKnownGameQuery(query){
- const normalized=normalizeGameName(query).replace(/\b(?:ps ?5|playstation 5)\b/g," ").replace(/\s+/g," ").trim();
+ const normalized=stripSearchNoise(query);
  for(const entry of GAME_SEARCH_ALIASES){
-  if(entry.aliases.some(alias=>normalizeGameName(alias)===normalized))return entry.canonical;
+  if(entry.aliases.some(alias=>stripSearchNoise(alias)===normalized))return entry.canonical;
  }
- // Catch small spelling mistakes in the last word without allowing arbitrary unrelated results.
  const parts=normalized.split(" ").filter(Boolean);
  if(parts.length>=2&&parts.includes("phantom")&&parts.includes("blade")){
   const tail=parts.filter(x=>x!=="phantom"&&x!=="blade").join("");
@@ -364,46 +377,55 @@ function searchVariants(query){
  const variants=[q],canonical=canonicalKnownGameQuery(q);
  if(canonical){
   variants.push(canonical);
-  if(canonical==="Phantom Blade Zero")variants.push("Phantom Blade: Zero","phantom-blade-zero");
-  if(canonical==="Grand Theft Auto VI")variants.push("GTA 6","GTA VI");
-  if(canonical==="EA SPORTS FC 27")variants.push("FC 27","FIFA 27");
+  const entry=GAME_SEARCH_ALIASES.find(x=>x.canonical===canonical);
+  if(entry)variants.push(...entry.aliases.slice(0,2));
  }
- if(/\bgta\s*(vi|6)\b|\bgrand theft auto\s*(vi|6)\b/i.test(q)) variants.push("Grand Theft Auto VI","GTA 6","GTA VI");
- if(/\bfc\s*27\b|\bea sports fc\s*27\b|\bfifa\s*27\b/i.test(q)) variants.push("EA SPORTS FC 27","FC 27","FIFA 27");
- if(/^fc\s*\d+$/i.test(q)) variants.push("EA SPORTS "+q);
- return [...new Set(variants)];
+ if(/\bgta\s*(vi|6)\b|\bgrand theft auto\s*(vi|6)\b/i.test(q))variants.push("Grand Theft Auto VI","GTA 6","GTA VI");
+ if(/\bfc\s*27\b|\bea sports fc\s*27\b|\bfifa\s*27\b/i.test(q))variants.push("EA SPORTS FC 27","FC 27","FIFA 27");
+ if(/^fc\s*\d+$/i.test(q))variants.push("EA SPORTS "+q);
+ const cleaned=stripSearchNoise(q);
+ if(cleaned&&normalizeGameName(cleaned)!==normalizeGameName(q))variants.push(cleaned);
+ const words=cleaned.split(" ").filter(Boolean);
+ // Search broader phrase variants, but score the actual user intent before displaying results.
+ if(words.length>=3)variants.push(words.slice(0,-1).join(" "));
+ if(words.length>=4)variants.push(words.slice(0,3).join(" "));
+ if(words.length===2)variants.push(words[0]);
+ return [...new Set(variants.map(x=>String(x||"").trim()).filter(Boolean))].slice(0,6);
 }
 function scoreGameSearchResult(gameName,query,variants){
- const name=normalizeGameName(gameName);
+ const name=normalizeGameName(gameName),compactName=name.replace(/\s/g,"");
  if(!name)return 1000;
- const targets=[...new Set((variants||[query]).map(normalizeGameName).filter(Boolean))];
- for(let i=0;i<targets.length;i++){
-  const t=targets[i];
-  if(name===t)return i===0?0:1+i;
+ const canonical=canonicalKnownGameQuery(query);
+ const target=normalizeGameName(stripSearchNoise(canonical||query)),compactTarget=target.replace(/\s/g,"");
+ if(!target)return 1000;
+ if(name===target)return 0;
+ if(canonical){
+  const canonicalName=normalizeGameName(canonical);
+  if(name===canonicalName)return 0;
+  if(name.startsWith(canonicalName+" "))return 3+(name.length-canonicalName.length)/100;
  }
- for(let i=0;i<targets.length;i++){
-  const t=targets[i];
-  if(name.startsWith(t)||t.startsWith(name))return 10+i;
-  if(name.includes(t)||t.includes(name))return 20+i;
- }
- const nameTokens=name.split(" "), scored=[];
- for(const target of targets){
-  const qTokens=target.split(" ").filter(Boolean);
-  if(!qTokens.length)continue;
-  let score=0,matched=0;
-  for(const token of qTokens){
-   if(nameTokens.includes(token)){matched++;continue}
-   let best=99;
-   for(const candidate of nameTokens){
+ if(compactTarget.length>=4&&compactName.includes(compactTarget))return 5+Math.max(0,compactName.length-compactTarget.length)/100;
+ if(compactName.length>=5&&compactTarget.includes(compactName))return 12+(compactTarget.length-compactName.length)/100;
+ const nameTokens=name.split(" ").filter(Boolean),queryTokens=target.split(" ").filter(Boolean);
+ if(!queryTokens.length)return 1000;
+ let score=0,matched=0;const used=new Set();
+ for(const token of queryTokens){
+  let best={dist:999,index:-1};
+  for(let i=0;i<nameTokens.length;i++){
+   if(used.has(i))continue;
+   const candidate=nameTokens[i];
+   if(candidate===token){best={dist:0,index:i};break}
+   const allow=token.length>=8?2:token.length>=5?1:0;
+   if(allow){
     const dist=levenshteinDistance(token,candidate);
-    const allowance=token.length>=7?2:token.length>=4?1:0;
-    if(dist<=allowance)best=Math.min(best,dist);
+    if(dist<=allow&&dist<best.dist)best={dist,index:i};
    }
-   if(best<99){matched++;score+=best*3}
   }
-  if(matched===qTokens.length)scored.push(30+score+Math.abs(nameTokens.length-qTokens.length));
+  if(best.index>=0){matched++;used.add(best.index);score+=best.dist*4}
  }
- return scored.length?Math.min(...scored):1000;
+ if(matched===queryTokens.length)return 25+score+Math.abs(nameTokens.length-queryTokens.length)*0.35;
+ if(queryTokens.length>=3&&matched>=queryTokens.length-1&&matched>=2)return 55+score+(queryTokens.length-matched)*12+Math.abs(nameTokens.length-queryTokens.length)*0.35;
+ return 1000;
 }
 async function fetchRawgAbsolute(url){
  const u=new URL(url);u.searchParams.set("key",getRawgKey());
@@ -470,7 +492,7 @@ async function loadOnlineGames({query="",append=false}={}){
     try{data=await rawgFetch("/games",params)}
     catch(err){if(i===0)throw err;continue}
     if(i===0)primaryData=data;
-    if(data.next)onlineNextQueue.push(data.next);
+    if(i===0&&data.next)onlineNextQueue.push(data.next);
     for(const game of (Array.isArray(data.results)?data.results:[])){
      const id=String(game.id);
      const prior=allResults.get(id);
@@ -685,7 +707,13 @@ function render(){
  document.getElementById("avgStat").textContent=rated.length?(rated.reduce((s,g)=>s+Number(g.rating),0)/rated.length).toFixed(1):"—";
  let genres=[...new Set(all.map(g=>g.genre).filter(Boolean))].sort(), gf=document.getElementById("genreFilter"), old=gf.value;
  gf.innerHTML='<option value="all">همه ژانرها</option>'+genres.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join("");if(genres.includes(old))gf.value=old;
- let list=all.filter(g=>(g.title+" "+g.genre).toLowerCase().includes(query.toLowerCase()));
+ const localSearch=String(query||"").trim().toLowerCase();
+ let list=all.filter(g=>{
+  const title=String(g.title||""),hay=(title+" "+String(g.genre||"")).toLowerCase();
+  if(!localSearch||hay.includes(localSearch))return true;
+  const scorer=window.gamescopeScoreGameSearchResult;
+  return typeof scorer==="function"&&scorer(title,query)<1000;
+ });
  if(filter==="library")list=list.filter(g=>g.owned);
  if(filter==="favorites")list=list.filter(g=>g.fav);
  if(filter==="playing")list=list.filter(g=>g.owned&&g.status==="در حال بازی");
@@ -715,8 +743,7 @@ let searchRenderTimer;document.getElementById("search").addEventListener("input"
 document.getElementById("search").addEventListener("keydown",e=>{
  if(e.key!=="Enter")return;
  const q=e.target.value.trim();if(!q)return;
- const localMatch=allGames().some(g=>(String(g.title||"")+" "+String(g.genre||"")).toLowerCase().includes(q.toLowerCase()));
- if(!localMatch&&typeof window.gamescopeSearchOnlineFromMain==="function"){e.preventDefault();window.gamescopeSearchOnlineFromMain()}
+ if(typeof window.gamescopeSearchOnlineFromMain==="function"){e.preventDefault();window.gamescopeSearchOnlineFromMain()}
 });
 document.getElementById("games").addEventListener("click",e=>{
  if(e.target.closest("#searchOnlineFallback")&&typeof window.gamescopeSearchOnlineFromMain==="function")window.gamescopeSearchOnlineFromMain();
