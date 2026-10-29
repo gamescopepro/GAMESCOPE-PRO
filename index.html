@@ -427,6 +427,7 @@ function scoreGameSearchResult(gameName,query,variants){
  if(queryTokens.length>=3&&matched>=queryTokens.length-1&&matched>=2)return 55+score+(queryTokens.length-matched)*12+Math.abs(nameTokens.length-queryTokens.length)*0.35;
  return 1000;
 }
+window.gamescopeScoreGameSearchResult=(name,query)=>scoreGameSearchResult(name,query,searchVariants(query));
 async function fetchRawgAbsolute(url){
  const u=new URL(url);u.searchParams.set("key",getRawgKey());
  const response=await fetch(u.toString(),{headers:{Accept:"application/json"}});let data={};try{data=await response.json()}catch(e){}
