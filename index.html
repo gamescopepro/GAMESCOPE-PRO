@@ -365,13 +365,13 @@ async function runFullUpdate({silent=false}={}){
   // دریافت چند صفحه از هر دسته تا گزارش فقط به یک صفحهٔ اول محدود نباشد.
   async function fetchCategoryPages(params, startPct, endPct, label){
     let nextUrl=makeUrl(params), items=[], pages=0;
-    while(nextUrl && pages<3){
+    while(nextUrl && pages<5){
       const data=await fetchRawgAbsolute(nextUrl);
       if(Array.isArray(data.results)) items.push(...data.results);
       nextUrl=data.next||null;
       pages++;
-      const pct=startPct+(endPct-startPct)*(pages/3);
-      setUpdateProgress(Math.min(endPct,pct),Math.round(Math.min(endPct,pct)).toLocaleString("fa-IR")+"٪ — "+label+" (صفحه "+pages+" از حداکثر ۳)");
+      const pct=startPct+(endPct-startPct)*(pages/5);
+      setUpdateProgress(Math.min(endPct,pct),Math.round(Math.min(endPct,pct)).toLocaleString("fa-IR")+"٪ — "+label+" (صفحه "+pages+" از حداکثر ۵)");
       if(!nextUrl)break;
     }
     return items;
@@ -393,6 +393,14 @@ async function runFullUpdate({silent=false}={}){
     changes.push(...futureGames.slice(0,8).map(g=>({kind:"base",title:g.name,text:"در فهرست فعلی بازی‌های آینده دیده شد • تاریخ انتشار: "+(g.released||"نامشخص")})));
     changes.push(...recentGames.slice(0,8).map(g=>({kind:"base",title:g.name,text:"در فهرست بازی‌های منتشرشدهٔ اخیر دیده شد • تاریخ: "+(g.released||"نامشخص")})));
   }
+  setUpdateProgress(84,"۸۴٪ — ذخیرهٔ نتایج در کاتالوگ عمومی (در صورت ورود مالک)");
+  let globalSync={published:false,added:0,updated:0,items:[],error:null};
+  if(typeof window.gamescopePublishRawgResults==="function"){
+   try{
+    globalSync=await window.gamescopePublishRawgResults(futureGames,recentGames);
+    if(globalSync?.items?.length)changes.unshift(...globalSync.items);
+   }catch(syncError){globalSync={published:false,added:0,updated:0,items:[],error:syncError?.message||"خطای ذخیره در کاتالوگ عمومی"};}
+  }
   localStorage.setItem(UPDATE_SNAPSHOT_KEY,JSON.stringify({future:currentFuture,recent:currentRecent,checkedAt:now.toISOString()}));
   setUpdateProgress(90,"۹۰٪ — نمایش نتایج و گزارش تغییرات");
   // Render future games in the existing catalog using the same card renderer.
@@ -400,10 +408,17 @@ async function runFullUpdate({silent=false}={}){
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults(futureGames,false);
   document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
-  const note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۳ صفحه برای هر دسته). "+(previous?"نتایج با بررسی قبلی مقایسه شدند؛ موارد تازه یعنی مواردی که در نتایج قبلیِ دریافت‌شده نبودند.":"این اولین بررسی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این گزارش کل فروشگاه PlayStation را تضمین نمی‌کند.";
+  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(previous?"نتایج با بررسی قبلی مقایسه شدند؛ موارد تازه یعنی مواردی که در نتایج قبلیِ دریافت‌شده نبودند.":"این اولین بررسی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ فروشگاه را تضمین نمی‌کند.";
+  if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
+  else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
+  else note+=" این بررسی فقط فهرست آنلاین را تازه کرد؛ انتشار تغییرات سراسری فقط با ورود مالک انجام می‌شود.";
   updateLogHtml(changes,now,note);
+  if(typeof window.gamescopeStoreUpdateReport==="function"){
+   const savedReport=await window.gamescopeStoreUpdateReport({status:globalSync.error?"partial":"success",added_count:globalSync.added||0,updated_count:globalSync.updated||0,note,items:changes.slice(0,30)});
+   if(savedReport?.error){note+=" خطا در ذخیرهٔ گزارش: "+savedReport.error;updateLogHtml(changes,now,note);}
+  }
   setUpdateProgress(100,"۱۰۰٪ — به‌روزرسانی تمام شد");
-  setOnlineStatus(note+" اطلاعات فقط به اندازهٔ پوشش و به‌روزرسانی منبع کامل است.");
+  setOnlineStatus(note+" اطلاعات فقط به اندازهٔ پوشش منبع RAWG کامل است.");
  }catch(err){
   setUpdateProgress(100,"بررسی متوقف شد؛ خطا رخ داد");
   setOnlineStatus("به‌روزرسانی کامل نشد: "+(err.message||"خطای شبکه")+"؛ اتصال اینترنت، کلید API و محدودیت درخواست‌ها را بررسی کن.");
