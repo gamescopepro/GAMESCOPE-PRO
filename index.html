@@ -329,6 +329,9 @@ function normalizeGameName(value){
   .replace(/\b(?:seven|seventh|vii)\b/g,"7")
   .replace(/\b(?:eight|eighth|viii)\b/g,"8")
   .replace(/\b(?:nine|ninth|ix)\b/g,"9")
+  .replace(/\bpart\s+i\b/g,"part 1")
+  .replace(/\bpart\s+ii\b/g,"part 2")
+  .replace(/\bpart\s+iii\b/g,"part 3")
   .replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," ");
 }
 const GAME_SEARCH_ALIASES=[
@@ -399,8 +402,13 @@ function searchVariants(query){
  const cleaned=stripSearchNoise(q);
  if(cleaned&&normalizeGameName(cleaned)!==normalizeGameName(q))variants.push(cleaned);
  const words=cleaned.split(" ").filter(Boolean);
- // Search broader phrase variants, but score the actual user intent before displaying results.
- if(words.length>=3)variants.push(words.slice(0,-1).join(" "));
+ // Fetch several useful parts of longer titles when the user mistypes one word.
+ // All candidates are still ranked against the complete search phrase afterwards.
+ if(words.length>=3){
+  variants.push(words.slice(0,-1).join(" "));
+  variants.push(words.slice(-2).join(" "));
+  variants.push(words.slice(0,2).join(" "));
+ }
  if(words.length>=4)variants.push(words.slice(0,3).join(" "));
  if(words.length===2)variants.push(words[0]);
  return [...new Set(variants.map(x=>String(x||"").trim()).filter(Boolean))].slice(0,6);
