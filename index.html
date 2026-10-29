@@ -485,7 +485,7 @@ render();
   if(!email||!password){$("gsOwnerMessage").textContent="ایمیل و رمز عبور مالک را وارد کن.";return}
   $("gsOwnerMessage").textContent="در حال بررسی حساب مالک…";
   const {data,error}=await client.auth.signInWithPassword({email,password});
-  if(error){$("gsOwnerMessage").textContent="ورود انجام نشد؛ ایمیل یا رمز را بررسی کن.";return}
+  if(error){const m=String(error.message||"");$("gsOwnerMessage").textContent=/invalid login credentials/i.test(m)?"ایمیل یا رمز حساب سایت درست نیست؛ اگر هنوز حساب نساخته‌ای، اول از فرم «ساخت حساب» ثبت‌نام کن.":/email not confirmed/i.test(m)?"ایمیل حساب هنوز تأیید نشده؛ صندوق ورودی و پوشهٔ هرزنامه را بررسی کن.":/too many requests/i.test(m)?"تلاش‌های زیادی انجام شده؛ کمی صبر کن و دوباره امتحان کن.":"ورود ناموفق بود: "+m;return}
   const {data:profile,error:profileError}=await client.from("profiles").select("role,username").eq("id",data.user.id).maybeSingle();
   if(profileError||profile?.role!=="owner"){
     await client.auth.signOut();showUser(null);$("gsOwnerPanel").classList.add("hidden");
@@ -498,9 +498,11 @@ render();
   const username=$("gsUsername").value.trim(),email=$("gsEmail").value.trim(),password=$("gsPassword").value;
   if(!/^[A-Za-z0-9_]{3,20}$/.test(username)){say("نام کاربری باید ۳ تا ۲۰ حرف انگلیسی، عدد یا _ باشد.");return}
   if(!email||password.length<8){say("ایمیل معتبر و رمز حداقل ۸ کاراکتری وارد کن.");return}
-  say("در حال ساخت حساب…");const {data,error}=await client.auth.signUp({email,password,options:{data:{username},emailRedirectTo:location.origin+location.pathname}});
-  if(error){say(/duplicate|unique/i.test(error.message)?"این نام کاربری قبلاً گرفته شده؛ نام دیگری انتخاب کن.":error.message);return}
-  if(data.session){showUser(data.user,username);await syncDown();say("حساب ساخته شد و وارد شدی.")}else say("ثبت‌نام ثبت شد. ایمیلت را برای تأیید حساب بررسی کن؛ سپس وارد شو.");
+  const btn=$("gsSignup");btn.disabled=true;btn.textContent="در حال ثبت‌نام…";say("در حال ساخت حساب؛ لطفاً صفحه را نبند…");
+  try{const {data,error}=await client.auth.signUp({email,password,options:{data:{username},emailRedirectTo:location.origin+location.pathname}});
+  if(error){const m=String(error.message||"");say(/already registered|user already exists/i.test(m)?"برای این ایمیل احتمالاً حساب وجود دارد؛ به‌جای ثبت‌نام، «ورود» یا «بازیابی رمز با ایمیل» را بزن.":/password/i.test(m)&&/weak|short|least/i.test(m)?"رمز انتخابی ضعیف یا کوتاه است؛ رمز قوی‌تری با حداقل ۸ کاراکتر انتخاب کن.":/invalid email/i.test(m)?"فرمت ایمیل معتبر نیست؛ ایمیل را دوباره بررسی کن.":/rate limit|too many requests/i.test(m)?"درخواست‌های زیادی ارسال شده؛ چند دقیقه صبر کن و دوباره تلاش کن.":"ثبت‌نام ناموفق بود: "+m);return}
+  if(data.session){showUser(data.user,username);await syncDown();say("حساب ساخته شد و وارد شدی.")}else say("درخواست ثبت‌نام ارسال شد. ایمیلت و پوشهٔ هرزنامه را برای لینک تأیید بررسی کن؛ سپس با همان رمز وارد شو. اگر ایمیل نیامد، ممکن است تأیید ایمیل یا محدودیت ارسال در Supabase نیاز به بررسی داشته باشد.");
+  }catch(e){say("ارتباط با سرویس ثبت‌نام برقرار نشد: "+(e?.message||"خطای شبکه")+"؛ اینترنت را بررسی و دوباره امتحان کن.")}finally{btn.disabled=false;btn.textContent="ساخت حساب"}
  };
  $("gsLogin").onclick=async()=>{
   const email=$("gsEmail").value.trim(),password=$("gsPassword").value;if(!email||!password){say("ایمیل و رمز عبور را وارد کن.");return}
