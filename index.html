@@ -563,7 +563,10 @@ async function loadOnlineGames({query="",append=false}={}){
    (originalQuery?"نتایج جست‌وجو برای «"+originalQuery+"». "+correction:"")+
    (originalQuery?"":"همهٔ پلتفرم‌ها • ")+
    "تعداد گزارش‌شده توسط RAWG: "+total+" • بازی‌های نمایش‌داده‌شده: "+results.length.toLocaleString("fa-IR"));
-  if(!results.length&&!append)document.getElementById("onlineResults").innerHTML='<div class="empty" style="grid-column:1/-1">نتیجهٔ دقیقی پیدا نشد. نام رسمی، املای جایگزین یا بخشی از نام بازی را امتحان کن. برای عناوینی که در RAWG ثبت نشده‌اند، سایت نمی‌تواند اطلاعات کامل را از این منبع دریافت کند.</div>';
+  if(!results.length&&!append){
+   const storeFallback=originalQuery?' <br><a href="https://store.playstation.com/en-us/search/'+encodeURIComponent(originalQuery)+'" target="_blank" rel="noopener noreferrer" class="account-btn secondary" style="display:inline-flex;margin-top:12px">جست‌وجوی همین عبارت در PlayStation Store ↗</a>':"";
+   document.getElementById("onlineResults").innerHTML='<div class="empty" style="grid-column:1/-1">نتیجهٔ دقیقی از RAWG پیدا نشد؛ این به معنی نبودن بازی در PlayStation Store نیست. املای دیگر یا بخشی از نام را امتحان کن.'+storeFallback+'</div>';
+  }
  }catch(err){
   // Preserve the official Phantom Blade Zero result even if RAWG is down.
   if(isPhantomSearch&&!append){
