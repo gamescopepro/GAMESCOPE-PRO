@@ -216,16 +216,20 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
   <div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button id="onlineMore" class="secondary hidden">بازی‌های بیشتر</button></div>
 </div>
 <div id="addPanel" class="panel hidden"><div class="section-title"><h3>افزودن بازی به کتابخانه</h3><span class="hint">اطلاعات دلخواه خودت رو وارد کن</span></div><div class="formgrid"><div class="field"><label>نام بازی *</label><input id="newTitle" placeholder="مثلاً Ghost of Tsushima"></div><div class="field"><label>ژانر</label><input id="newGenre" placeholder="اکشن، ماجراجویی..."></div><div class="field"><label>وضعیت</label><select id="newStatus"><option>در فهرست علاقه‌مندی</option><option>در حال بازی</option><option>تمام‌شده</option><option>می‌خواهم بخرم</option></select></div><div class="field"><label>امتیاز تو (۰ تا ۱۰)</label><input id="newRating" type="number" min="0" max="10" step=".5" placeholder="مثلاً 9"></div><div class="field full"><label>یادداشت</label><textarea id="newNote" rows="2" placeholder="نظر یا یادداشت درباره بازی..."></textarea></div><div class="field full"><button id="saveGame">ذخیره بازی</button></div></div></div>
-<div class="tabs" id="tabs"><button class="tab active" data-filter="all">🎮 همه بازی‌ها</button><button class="tab" data-filter="library">📚 کتابخانه من</button><button class="tab" data-filter="favorites">⭐ علاقه‌مندی‌ها</button><button class="tab" data-filter="playing">▶ در حال بازی</button><button class="tab" data-filter="completed">🏆 تمام‌شده‌ها</button><button class="tab" data-filter="wishlist">🛒 می‌خواهم بخرم</button></div>
-<div class="section-title"><h3 id="listHeading">همه بازی‌ها</h3><span class="hint" id="resultCount"></span></div>
+<div class="tabs" id="tabs"><button class="tab active" data-filter="all">🎮 بازی‌های من</button><button class="tab" data-filter="library">📚 کتابخانه من</button><button class="tab" data-filter="favorites">⭐ علاقه‌مندی‌ها</button><button class="tab" data-filter="playing">▶ در حال بازی</button><button class="tab" data-filter="completed">🏆 تمام‌شده‌ها</button><button class="tab" data-filter="wishlist">🛒 می‌خواهم بخرم</button></div>
+<div class="section-title"><h3 id="listHeading">بازی‌های من</h3><span class="hint" id="resultCount"></span></div>
 <div class="toolbar"><select id="sort" style="max-width:210px"><option value="name">مرتب‌سازی: نام بازی</option><option value="rating">بالاترین امتیاز من</option><option value="recent">تازه‌اضافه‌شده‌ها</option></select><select id="genreFilter" style="max-width:210px"><option value="all">همه ژانرها</option></select></div>
 <div id="games" class="grid"></div>
 <div class="panel"><div class="section-title"><h3>🧑‍🚀 پروفایل گیمر</h3><span class="hint">آمار کتابخانهٔ شخصی</span></div><p id="profileText" style="line-height:1.9;color:#b7c9e0;font-size:13px;margin:0"></p></div>
 <div class="footer">GAMESCOPE • کاتالوگ آنلاین با داده‌های RAWG • تازه‌سازی هنگام باز شدن صفحه و هر ۳۰ دقیقه تا وقتی صفحه باز است؛ پوشش بازی‌ها به داده‌های منبع بستگی دارد. این برنامه به حساب PSN وصل نیست. پشتیبان JSON کمک می‌کند اطلاعاتت را به دستگاه دیگر منتقل کنی.</div>
 </main>
 <script>
-const catalog=[
-["Astro Bot","پلتفرمر","🤖",9.2],["Marvel’s Spider-Man 2","اکشن","🕷️",8.8],["God of War Ragnarök","اکشن، ماجراجویی","⚔️",9.4],["Ghost of Tsushima Director’s Cut","اکشن، سامورایی","🥷",9.5],["The Last of Us Part I","داستانی، اکشن","🍄",9.1],["Horizon Forbidden West","جهان‌باز، اکشن","🏹",8.7],["Gran Turismo 7","رانندگی","🏎️",8.6],["EA SPORTS FC 26","ورزشی","⚽",8.1],["Fortnite","بتل رویال","🪂",8.0],["Call of Duty: Black Ops 6","شوتر","🎯",8.2],["Demon’s Souls","نقش‌آفرینی","🛡️",8.9],["Final Fantasy VII Rebirth","نقش‌آفرینی","✨",9.3],["Ratchet & Clank: Rift Apart","ماجراجویی","🚀",8.8],["Returnal","روگ‌لایک، شوتر","🌌",8.4],["Sackboy: A Big Adventure","پلتفرمر","🧸",8.3],["Stellar Blade","اکشن","🌠",8.2],["Black Myth: Wukong","اکشن، نقش‌آفرینی","🐒",8.9],["Where Winds Meet","جهان‌باز، اکشن","🌬️",8.5],["Rise of the Ronin","اکشن، سامورایی","🗡️",7.8],["Mortal Kombat 1","مبارزه‌ای","🥊",8.0],["Cyberpunk 2077","جهان‌باز، نقش‌آفرینی","🌃",8.7],["Red Dead Redemption 2","جهان‌باز","🤠",9.7],["Grand Theft Auto V","جهان‌باز","🚘",9.0],["Minecraft","سندباکس","⛏️",8.8],["Overcooked! All You Can Eat","مهمانی","🍳",7.9],["It Takes Two","ماجراجویی دونفره","🧩",9.0],["Uncharted: Legacy of Thieves","ماجراجویی","🧭",8.6],["Resident Evil 4","ترسناک، اکشن","🧟",9.0],["Silent Hill 2","ترسناک","🌫️",8.8],["The Witcher 3: Wild Hunt","نقش‌آفرینی","🐺",9.4]];
+const KEY="sadra_pshub_v1";
+let userGames=[];try{userGames=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){userGames=[]}
+let filter="all", query="", renderLimit=48;
+// The public starter/recommended catalogue was intentionally removed.
+// Keep only games saved by the user in this personal list.
+function allGames(){return userGames.filter(u=>!String(u.id).startsWith("seed")&&!String(u.id).startsWith("site_"))}
 const KEY="sadra_pshub_v1";
 let userGames=[];try{userGames=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){userGames=[]}
 let filter="all", query="", renderLimit=48;
@@ -748,7 +752,7 @@ function render(){
  if(document.getElementById("sort").value==="name")list.sort((a,b)=>a.title.localeCompare(b.title));
  if(document.getElementById("sort").value==="rating")list.sort((a,b)=>(Number(b.rating)||-1)-(Number(a.rating)||-1));
  if(document.getElementById("sort").value==="recent")list.sort((a,b)=>(b.created||0)-(a.created||0));
- document.getElementById("listHeading").textContent=filter==="library"?"کتابخانه من":filter==="favorites"?"علاقه‌مندی‌ها":filter==="playing"?"در حال بازی":filter==="completed"?"بازی‌های تمام‌شده":filter==="wishlist"?"فهرست خرید":"همه بازی‌ها";
+ document.getElementById("listHeading").textContent=filter==="library"?"کتابخانه من":filter==="favorites"?"علاقه‌مندی‌ها":filter==="playing"?"در حال بازی":filter==="completed"?"بازی‌های تمام‌شده":filter==="wishlist"?"فهرست خرید":"بازی‌های من";
  document.getElementById("resultCount").textContent=list.length+" بازی";
  const box=document.getElementById("games");
  if(!list.length){
@@ -867,7 +871,8 @@ render();
   const {data,error}=await client.from("site_catalog").select("*").order("title");
   if(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
   adminCatalogRows=data||[];
-  seed=adminCatalogRows.filter(r=>!r.is_hidden).map(r=>({id:r.id,title:r.title,genre:r.genre||"ژانر نامشخص",platforms:r.platforms||"PS5",emoji:r.emoji||"🎮",critic:r.critic===null?null:Number(r.critic),publisher:r.publisher||"",releaseDate:r.release_date||"",releaseStatus:r.release_status||"unknown",storeUrl:r.store_url||"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.parse(r.created_at)||Date.now()}));
+  // Admin management keeps its database rows, but they are no longer injected
+  // into the public homepage/personal game list.
   render();renderAdminList();return true;
  }
  window.gamescopePublishRawgResults=async function(futureGames,recentGames){
