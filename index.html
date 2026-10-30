@@ -726,29 +726,46 @@ function gameCoverMarkup(g){
  const image=cover?'<img src="'+esc(cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">':"";
  return '<div class="cover '+state+'"><span class="cover-fallback">'+esc(g.emoji||"🎮")+'</span>'+image+'</div>';
 }
-const coverHydrationRunning=new Set();
-async function hydrateMissingCovers(games){
- const missing=(games||[]).filter(g=>g&&!String(g.cover||"").trim()&&!coverHydrationRunning.has(String(g.id))).slice(0,8);
- for(const game of missing){
-  if(coverHydrationRunning.size>=3)break;
-  const key=String(game.id);coverHydrationRunning.add(key);
-  (async()=>{
+const coverHydrationRunning=new Set(),coverHydrationQueue=[];
+let coverHydrationWorkers=0;
+async function hydrateOneGameCover(game){
+ const key=String(game.id);
+ try{
+  const current=getGame(key);if(!current||String(current.cover||"").trim())return;
+  const id=current.rawgId||(/^rawg_(\d+)$/.exec(key)||[])[1]||(/^\d+$/.test(key)?key:"");
+  let detail=null;if(id){try{detail=await rawgGameDetails(id)}catch(e){}}
+  let cover=detail&&detail.background_image||"";
+  if(!cover&&current.title){
    try{
-    const id=game.rawgId||(/^rawg_(\d+)$/.exec(key)||[])[1]||(/^\d+$/.test(key)?key:"");
-    let detail=null;if(id){try{detail=await rawgGameDetails(id)}catch(e){}}
-    let cover=detail&&detail.background_image||"";
-    if(!cover&&game.title){
-     try{
-      const data=await rawgFetch("/games",{search:String(game.title).slice(0,120),page:1,page_size:10});
-      const candidates=Array.isArray(data.results)?data.results:[];
-      const exact=candidates.find(x=>x.background_image&&normalizeGameName(x.name)===normalizeGameName(game.title));
-      if(exact){cover=exact.background_image;game.rawgId=exact.id;}
-     }catch(e){}
-    }
-    if(cover&&!game.cover){game.cover=cover;saveObj(game);}
-   }finally{coverHydrationRunning.delete(key)}
-  })();
+    const data=await rawgFetch("/games",{search:String(current.title).slice(0,120),page:1,page_size:10});
+    const candidates=Array.isArray(data.results)?data.results:[];
+    const exact=candidates.find(x=>x.background_image&&normalizeGameName(x.name)===normalizeGameName(current.title));
+    if(exact){cover=exact.background_image;current.rawgId=exact.id;}
+   }catch(e){}
+  }
+  if(cover&&!current.cover){current.cover=cover;saveObj(current);}
+ }finally{
+  coverHydrationRunning.delete(key);
+  coverHydrationWorkers=Math.max(0,coverHydrationWorkers-1);
+  pumpCoverHydration();
  }
+}
+function pumpCoverHydration(){
+ while(coverHydrationWorkers<3&&coverHydrationQueue.length){
+  const game=coverHydrationQueue.shift(),key=String(game.id);
+  if(coverHydrationRunning.has(key))continue;
+  coverHydrationRunning.add(key);coverHydrationWorkers++;
+  hydrateOneGameCover(game);
+ }
+}
+function hydrateMissingCovers(games){
+ for(const game of games||[]){
+  if(!game||String(game.cover||"").trim())continue;
+  const key=String(game.id);
+  if(coverHydrationRunning.has(key)||coverHydrationQueue.some(x=>String(x.id)===key))continue;
+  coverHydrationQueue.push(game);
+ }
+ pumpCoverHydration();
 }
 function render(){
  const all=allGames();document.getElementById("countStat").textContent=all.filter(g=>g.owned).length;
