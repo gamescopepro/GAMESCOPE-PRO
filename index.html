@@ -269,6 +269,22 @@ async function rawgGameDetails(id){
 function companyNames(g){
  return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
 }
+function siteCatalogRowToRawg(row){
+ const match=/^rawg_(\\d+)$/.exec(String(row?.id||""));
+ if(!match||!String(row?.title||"").trim())return null;
+ const platformNames=String(row.platforms||"").split(/[،,]/).map(x=>x.trim()).filter(Boolean);
+ const publisherNames=String(row.publisher||"").split(" • ").map(x=>x.trim()).filter(Boolean);
+ const critic=row.critic===null||row.critic===undefined?null:Number(row.critic);
+ return {
+  id:Number(match[1]),name:String(row.title),released:row.release_date||"",
+  rating:Number.isFinite(critic)?critic/2:null,metacritic:Number.isFinite(critic)?critic*10:null,
+  background_image:"",genres:row.genre?[{name:String(row.genre)}]:[],
+  platforms:platformNames.map(name=>({platform:{name}})),
+  publishers:publisherNames.map(name=>({name})),developers:[],
+  storeUrl:row.store_url||("https://store.playstation.com/en-us/search/"+encodeURIComponent(String(row.title))),
+  gamescopeCatalog:true,releaseStatus:row.release_status||"unknown"
+ };
+}
 function rawgGameObject(g){
  const gameTitle=g.name||"بازی بدون نام",customId=g.gamescopeOfficial?"official_"+String(g.slug||"game").replace(/[^a-z0-9_-]/gi,"-"):"rawg_"+g.id;
  return {id:customId,title:gameTitle,genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",platforms:Array.isArray(g.platforms)&&g.platforms.length?g.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown",storeUrl:g.storeUrl||"https://store.playstation.com/en-us/search/"+encodeURIComponent(gameTitle),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.gamescopeOfficial?null:g.id,cover:g.background_image||""}
@@ -561,6 +577,23 @@ async function loadOnlineGames({query="",append=false}={}){
    results=results.slice(0,40);
   }
 
+  if(!append&&typeof window.gamescopeFetchPublicCatalog==="function"){
+   try{
+    let catalogGames=(await window.gamescopeFetchPublicCatalog()).map(siteCatalogRowToRawg).filter(Boolean);
+    if(onlineUpcomingMode)catalogGames=catalogGames.filter(g=>g.releaseStatus==="upcoming");
+    else if(originalQuery){
+     const variants=searchVariants(originalQuery);
+     catalogGames=catalogGames.filter(g=>scoreGameSearchResult(g.name,originalQuery,variants)<1000);
+    }
+    const seenNames=new Set(results.map(g=>normalizeGameName(g.name)));
+    const additions=catalogGames.filter(g=>{
+     const key=normalizeGameName(g.name);
+     if(!key||seenNames.has(key))return false;
+     seenNames.add(key);return true;
+    });
+    results=[...additions,...results];
+   }catch(catalogError){console.warn("Public catalog merge failed:",catalogError)}
+  }
   onlineNext=onlineNextQueue.length>0?onlineNextQueue[0]:null;
   renderOnlineResults(results,append);
   const total=reportedCount.toLocaleString("fa-IR");
@@ -685,17 +718,6 @@ async function runFullUpdate({silent=false}={}){
   document.getElementById("updateLog").textContent="این بررسی کامل نشد. گزارش قبلی حفظ شد؛ پس از رفع خطا دوباره تلاش کن.";
  }finally{onlineBusy=false;if(refreshButton)refreshButton.disabled=false;}
 }
-// Automatic global synchronization is owner-only and throttled to avoid repeated RAWG requests.
-const AUTO_SYNC_KEY="gamescope_owner_auto_sync_at_v2";
-async function autoRefreshUpcoming(){
- if(!window.gamescopeOwnerAuthenticated){setOnlineStatus("کاتالوگ عمومی برای همه قابل مشاهده است؛ به‌روزرسانی سراسری فقط از حساب مالک انجام می‌شود.");return}
- const last=Number(localStorage.getItem(AUTO_SYNC_KEY)||0);
- if(Date.now()-last<15*60*1000||onlineBusy)return;
- localStorage.setItem(AUTO_SYNC_KEY,String(Date.now()));
- onlineUpcomingMode=true;
- await runFullUpdate({silent:true});
-}
-window.gamescopeScheduleOwnerAutoUpdate=()=>setTimeout(()=>autoRefreshUpcoming(),1200);
 // کاتالوگ به‌صورت خودکار هنگام بازشدن سایت بارگیری می‌شود و نیازی به دکمهٔ نمایش ندارد.
 setTimeout(()=>loadOnlineGames({query:""}),350);
 function refreshOnlineCatalogIfNeeded(force=false){
@@ -708,8 +730,6 @@ window.addEventListener("online",()=>refreshOnlineCatalogIfNeeded(true));
 document.addEventListener("visibilitychange",()=>refreshOnlineCatalogIfNeeded(false));
 // Public online listings refresh every five minutes while the page is open.
 setInterval(()=>refreshOnlineCatalogIfNeeded(true),5*60*1000);
-// The shared catalog and report sync runs every fifteen minutes while the owner is signed in and this page is open.
-setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeOwnerAuthenticated&&!onlineBusy)autoRefreshUpcoming()},15*60*1000);
 document.getElementById("onlineSearch").addEventListener("keydown",e=>{if(e.key==="Enter")loadOnlineGames({query:e.target.value.trim()})});
 document.getElementById("onlineMore").addEventListener("click",()=>{if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true})});
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
@@ -876,7 +896,7 @@ render();
  function setOwnerUI(value){
   isOwner=!!value;window.gamescopeOwnerAuthenticated=isOwner;
   $("gsOwnerMenuWrap").classList.toggle("hidden",!isOwner);
-  if(!isOwner){$("gsOwnerMenu").classList.add("hidden");$("gsAdminOverlay").classList.remove("open");}else if(window.gamescopeScheduleOwnerAutoUpdate)window.gamescopeScheduleOwnerAutoUpdate();
+  if(!isOwner){$("gsOwnerMenu").classList.add("hidden");$("gsAdminOverlay").classList.remove("open");}
  }
  async function refreshOwnerState(user){
   if(!user){setOwnerUI(false);return {owner:false,profile:null};}
@@ -909,10 +929,20 @@ render();
   const {data,error}=await client.from("site_catalog").select("*").order("title");
   if(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
   adminCatalogRows=data||[];
-  // Admin management keeps its database rows, but they are no longer injected
-  // into the public homepage/personal game list.
+  window.__gamescopePublicCatalogRows=adminCatalogRows.filter(row=>!row.is_hidden);
+  window.__gamescopePublicCatalogLoadedAt=Date.now();
   render();renderAdminList();return true;
  }
+ window.gamescopeFetchPublicCatalog=async function(force=false){
+  const cached=window.__gamescopePublicCatalogRows;
+  const loadedAt=Number(window.__gamescopePublicCatalogLoadedAt||0);
+  if(!force&&Array.isArray(cached)&&Date.now()-loadedAt<5*60*1000)return cached;
+  const {data,error}=await client.from("site_catalog").select("*").eq("is_hidden",false).order("title");
+  if(error)throw error;
+  window.__gamescopePublicCatalogRows=Array.isArray(data)?data:[];
+  window.__gamescopePublicCatalogLoadedAt=Date.now();
+  return window.__gamescopePublicCatalogRows;
+ };
  window.gamescopePublishRawgResults=async function(futureGames,recentGames){
   if(!currentUser||!isOwner)return {published:false,added:0,updated:0,items:[]};
   const {data:existingRows,error}=await client.from("site_catalog").select("*");
@@ -1164,7 +1194,7 @@ render();
  $("gsSettingsOpenAccount").addEventListener("click",()=>{closeGsSettings();$("openPsnAccount").click()});
  client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
- loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();paintResendCooldown();
+ loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeLoadLatestUpdateReport)window.gamescopeLoadLatestUpdateReport();},5*60*1000);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")window.gamescopeLoadLatestUpdateReport?.()});paintResendCooldown();
  const callbackParams=new URLSearchParams(window.location.search);const callbackError=callbackParams.get("error_description")||callbackParams.get("error");
  if(callbackError){
   $("gsResendConfirmation").classList.remove("hidden");
