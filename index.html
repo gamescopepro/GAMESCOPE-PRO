@@ -270,7 +270,7 @@ function companyNames(g){
  return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
 }
 function siteCatalogRowToRawg(row){
- const match=/^rawg_(\\d+)$/.exec(String(row?.id||""));
+ const match=/^rawg_([0-9]+)$/.exec(String(row?.id||""));
  if(!match||!String(row?.title||"").trim())return null;
  const platformNames=String(row.platforms||"").split(/[،,]/).map(x=>x.trim()).filter(Boolean);
  const publisherNames=String(row.publisher||"").split(" • ").map(x=>x.trim()).filter(Boolean);
