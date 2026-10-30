@@ -529,7 +529,7 @@ async function loadOnlineGames({query="",append=false}={}){
     if(onlineUpcomingMode){
      const now=new Date(),end=new Date(now);end.setFullYear(end.getFullYear()+3);
      const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-     params.dates=iso(now)+","+iso(end);params.platforms="187";params.stores="3";params.ordering="released";
+     params.dates=iso(now)+","+iso(end);params.ordering="released";
     }
     if(variant)params.search=variant;
     let data;
@@ -598,7 +598,7 @@ async function loadOnlineGames({query="",append=false}={}){
   renderOnlineResults(results,append);
   const total=reportedCount.toLocaleString("fa-IR");
   const correction=isPhantomSearch?" نام جست‌وجو به «Phantom Blade Zero» اصلاح شد؛ عنوان رسمی در PlayStation تأیید شده است. ":"";
-  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ PS5 با فیلتر PlayStation Store در RAWG • ":"")+
+  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ همهٔ پلتفرم‌ها در RAWG • ":"")+
    (originalQuery?"نتایج جست‌وجو برای «"+originalQuery+"». "+correction:"")+
    (originalQuery?"":"همهٔ پلتفرم‌ها • ")+
    "تعداد گزارش‌شده توسط RAWG: "+total+" • بازی‌های نمایش‌داده‌شده: "+results.length.toLocaleString("fa-IR"));
