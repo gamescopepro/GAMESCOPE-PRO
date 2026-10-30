@@ -191,10 +191,9 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 <div class="toolbar"><div class="search"><input id="search" placeholder="🔎 جست‌وجوی بازی‌ها..." autocomplete="off"></div><button id="addToggle">＋ افزودن بازی</button><button class="secondary" id="exportBtn">خروجی پشتیبان</button><button class="secondary" id="importBtn">ورود پشتیبان</button><input id="importFile" type="file" accept=".json,application/json" class="hidden"></div>
 <div class="panel" id="onlinePanel">
   <div class="section-title"><h3>🌐 کاتالوگ آنلاین بازی‌ها</h3><span class="hint">اطلاعات از RAWG</span></div>
-  <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ عمومی همهٔ پلتفرم‌ها را می‌بینی؛ برای بازی‌های معرفی‌شده و منتشرنشدهٔ PS5، دکمهٔ «بازی‌های آیندهٔ PS5» را بزن. این فهرست با تاریخ انتشار آینده، پلتفرم PS5 و داده‌های فروشگاه PlayStation در RAWG فیلتر می‌شود. جست‌وجو تلاش می‌کند نام کامل، مخفف و عبارت‌های نزدیک را بفهمد؛ پوشش و دقت نهایی به داده‌های API بستگی دارد. کلید در همین مرورگر ذخیره می‌شود.</p>
+  <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ عمومی همهٔ پلتفرم‌ها را می‌بینی؛ برای بازی‌های آیندهٔ PS5 از دکمهٔ مربوطه استفاده کن. اتصال RAWG از سرور مرکزی GAMESCOPE انجام می‌شود؛ کلید API در کد سایت یا مرورگر بازدیدکنندگان قرار نمی‌گیرد و کاربران برای جست‌وجو به کلید شخصی نیاز ندارند. پوشش و دقت نتایج به داده‌های منبع بستگی دارد.</p>
   <div class="formgrid">
-    <div class="field full"><label for="rawgKey">کلید API سرویس RAWG</label><input id="rawgKey" type="password" autocomplete="off" placeholder="کلید API را اینجا وارد کن"></div>
-    <div class="field"><button id="saveKey">بررسی و ذخیره کلید</button></div>
+    <div class="field full"><div class="admin-notice" style="margin:0">🔐 اتصال مرکزی امن — هیچ بازدیدکننده‌ای نیازی به واردکردن کلید API ندارد.</div></div>
     <div class="field"><button class="secondary" id="onlineToggle">نمایش کاتالوگ آنلاین</button></div>
     <div class="field full"><label for="onlineSearch">جست‌وجوی آنلاین بازی (نام دقیق یا کوتاه)</label><input id="onlineSearch" placeholder="نام هر بازی؛ حتی بازی‌های پلتفرم‌های دیگر"></div>
     <div class="field"><button id="onlineSearchBtn">🔎 جست‌وجو</button></div>
@@ -221,7 +220,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 <div class="toolbar"><select id="sort" style="max-width:210px"><option value="name">مرتب‌سازی: نام بازی</option><option value="rating">بالاترین امتیاز من</option><option value="recent">تازه‌اضافه‌شده‌ها</option></select><select id="genreFilter" style="max-width:210px"><option value="all">همه ژانرها</option></select></div>
 <div id="games" class="grid"></div>
 <div class="panel"><div class="section-title"><h3>🧑‍🚀 پروفایل گیمر</h3><span class="hint">آمار کتابخانهٔ شخصی</span></div><p id="profileText" style="line-height:1.9;color:#b7c9e0;font-size:13px;margin:0"></p></div>
-<div class="footer">GAMESCOPE • کاتالوگ آنلاین با داده‌های RAWG • تازه‌سازی هنگام باز شدن صفحه و هر ۳۰ دقیقه تا وقتی صفحه باز است؛ پوشش بازی‌ها به داده‌های منبع بستگی دارد. این برنامه به حساب PSN وصل نیست. پشتیبان JSON کمک می‌کند اطلاعاتت را به دستگاه دیگر منتقل کنی.</div>
+<div class="footer">GAMESCOPE • کاتالوگ آنلاین با داده‌های RAWG از طریق اتصال امن مرکزی • کاربران برای جست‌وجو نیازی به کلید API ندارند • پوشش بازی‌ها به داده‌های منبع بستگی دارد. این برنامه به حساب PSN وصل نیست. پشتیبان JSON کمک می‌کند اطلاعاتت را به دستگاه دیگر منتقل کنی.</div>
 </main>
 <script>
 const KEY="sadra_pshub_v1";
@@ -236,25 +235,30 @@ function getGame(id){return allGames().find(g=>String(g.id)===String(id))}
 function toast(t){let el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2300)}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 
-const RAWG_KEY_STORAGE="sadra_rawg_api_key_v1";
-const RAWG_BASE="https://api.rawg.io/api";
+const RAWG_PROXY_URL="https://axwjiwpwqoykvcbumixy.supabase.co/functions/v1/game-catalog";
+const RAWG_PROXY_PUBLIC_KEY="sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-";
 let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLastQuery="", onlineBusy=false, onlineUpcomingMode=false;
 const onlineCache=new Map();
+const rawgResponseCache=new Map();
 function setOnlineStatus(message){const el=document.getElementById("onlineStatus");if(el)el.textContent=message}
-function getRawgKey(){return (document.getElementById("rawgKey").value||localStorage.getItem(RAWG_KEY_STORAGE)||"").trim()}
-function rawgUrl(path,params={}){
- const u=new URL(RAWG_BASE+path);u.searchParams.set("key",getRawgKey());
- Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v))});
- return u.toString()
-}
 async function rawgFetch(path,params={}){
- const response=await fetch(rawgUrl(path,params),{headers:{Accept:"application/json"}});
+ const cacheKey=path+"?"+Object.entries(params).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>k+"="+String(v)).join("&");
+ const cached=rawgResponseCache.get(cacheKey);
+ if(cached&&cached.expiresAt>Date.now())return cached.data;
+ const response=await fetch(RAWG_PROXY_URL,{
+  method:"POST",
+  headers:{"Content-Type":"application/json","apikey":RAWG_PROXY_PUBLIC_KEY},
+  body:JSON.stringify({path,params})
+ });
  let data={};try{data=await response.json()}catch(e){}
  if(!response.ok){
-  if(response.status===401||response.status===403)throw new Error("کلید API نامعتبر است یا دسترسی آن تأیید نشد.");
-  if(response.status===429)throw new Error("سقف درخواست‌های API موقتاً پر شده است. کمی بعد دوباره تلاش کن.");
-  throw new Error(data.detail||data.error||("خطای سرویس RAWG ("+response.status+")"));
+  if(response.status===503&&data.error==="server_not_configured")throw new Error("اتصال مرکزی هنوز کامل نشده است؛ مدیر سایت باید کلید RAWG را یک‌بار در تنظیمات امن Supabase ثبت کند.");
+  if(response.status===429)throw new Error(data.message||"تعداد درخواست‌ها زیاد است؛ کمی بعد دوباره تلاش کن.");
+  if(response.status===502)throw new Error(data.message||"کلید RAWG در سرور معتبر نیست یا دسترسی آن محدود شده است.");
+  throw new Error(data.message||data.error||("خطای سرویس مرکزی ("+response.status+")"));
  }
+ rawgResponseCache.set(cacheKey,{data,expiresAt:Date.now()+120000});
+ if(rawgResponseCache.size>180){for(const [key,item] of rawgResponseCache){if(item.expiresAt<=Date.now())rawgResponseCache.delete(key)}}
  return data
 }
 const rawgDetailsCache=new Map();
@@ -449,9 +453,12 @@ function scoreGameSearchResult(gameName,query,variants){
 }
 window.gamescopeScoreGameSearchResult=(name,query)=>scoreGameSearchResult(name,query,searchVariants(query));
 async function fetchRawgAbsolute(url){
- const u=new URL(url);u.searchParams.set("key",getRawgKey());
- const response=await fetch(u.toString(),{headers:{Accept:"application/json"}});let data={};try{data=await response.json()}catch(e){}
- if(!response.ok){if(response.status===401||response.status===403)throw new Error("کلید API نامعتبر است یا دسترسی آن تأیید نشد.");if(response.status===429)throw new Error("سقف درخواست‌های API موقتاً پر شده است. کمی بعد دوباره تلاش کن.");throw new Error(data.detail||data.error||("خطای سرویس RAWG ("+response.status+")"))}return data;
+ const u=new URL(url);
+ if(u.hostname!=="api.rawg.io"||!u.pathname.startsWith("/api/games"))throw new Error("آدرس صفحهٔ بعدی RAWG معتبر نیست.");
+ const path=u.pathname.slice("/api".length);
+ const params={};
+ u.searchParams.forEach((value,key)=>{if(key!=="key")params[key]=value});
+ return rawgFetch(path,params);
 }
 function cleanSearchIntent(query){
  let q=String(query||"").trim();
@@ -473,13 +480,6 @@ async function loadOnlineGames({query="",append=false}={}){
  const canonical=canonicalKnownGameQuery(originalQuery);
  const isPhantomSearch=canonical==="Phantom Blade Zero";
  const officialPhantom=phantomBladeZeroOfficialRecord();
- const key=getRawgKey();
- if(!key&&!isPhantomSearch){setOnlineStatus("ابتدا کلید API را وارد و با دکمه «بررسی و ذخیره کلید» ذخیره کن.");return}
- if(!key&&isPhantomSearch){
-  renderOnlineResults([officialPhantom],false);onlineNext=null;onlineNextQueue=[];
-  setOnlineStatus("عنوان رسمی Phantom Blade Zero از اطلاعات PlayStation نمایش داده شد. برای جست‌وجوی سایر بازی‌ها، کلید RAWG را وارد کن.");
-  return;
- }
  onlineBusy=true;
  document.getElementById("onlineResults").classList.remove("hidden");
  document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
@@ -571,19 +571,9 @@ async function loadOnlineGames({query="",append=false}={}){
   if(isPhantomSearch&&!append){
    renderOnlineResults([officialPhantom],false);
    setOnlineStatus("Phantom Blade Zero از صفحهٔ رسمی PlayStation نمایش داده شد. سرویس RAWG فعلاً در دسترس نیست؛ اطلاعات رسمی و لینک فروشگاه همچنان موجودند.");
-  }else setOnlineStatus("خطا: "+(err.message||"ارتباط با RAWG برقرار نشد.")+" اتصال اینترنت و کلید را بررسی کن.");
+  }else setOnlineStatus("خطا: "+(err.message||"ارتباط با سرویس مرکزی بازی‌ها برقرار نشد.")+" اتصال اینترنت را بررسی کن.");
  }finally{onlineBusy=false;more.disabled=false}
 }
-document.getElementById("saveKey").addEventListener("click",async()=>{
- const key=document.getElementById("rawgKey").value.trim();if(!key){setOnlineStatus("لطفاً ابتدا کلید API را وارد کن.");return}
- setOnlineStatus("در حال بررسی کلید API…");
- try{
-  const response=await fetch("https://api.rawg.io/api/games?page_size=1&key="+encodeURIComponent(key),{headers:{Accept:"application/json"}});
-  let data={};try{data=await response.json()}catch(e){}
-  if(!response.ok)throw new Error(response.status===401||response.status===403?"کلید نامعتبر است. کلید را از RAWG بررسی کن.":response.status===429?"محدودیت درخواست API؛ بعداً دوباره امتحان کن.":"سرویس RAWG خطا داد ("+response.status+").");
-  localStorage.setItem(RAWG_KEY_STORAGE,key);setOnlineStatus("کلید معتبر است و در این مرورگر ذخیره شد. حالا می‌توانی همه بازی‌ها را مرور یا جست‌وجو کنی.");
- }catch(err){setOnlineStatus("کلید ذخیره نشد: "+(err.message||"خطای شبکه")+"؛ اتصال اینترنت و کلید را بررسی کن.")}
-});
 document.getElementById("onlineToggle").addEventListener("click",()=>{
  const box=document.getElementById("onlineResults"),isHidden=box.classList.toggle("hidden");
  document.getElementById("onlineToggle").textContent=isHidden?"نمایش کاتالوگ آنلاین":"پنهان‌کردن کاتالوگ آنلاین";
@@ -619,14 +609,12 @@ function updateLogHtml(items, timestamp, note){
 }
 async function runFullUpdate({silent=false}={}){
  if(onlineBusy){if(!silent)setOnlineStatus("یک بررسی در حال انجام است؛ لطفاً صبر کن.");return}
- const key=getRawgKey();
- if(!key){setOnlineStatus("برای بررسی آنلاین، کلید RAWG را وارد و ذخیره کن.");return}
  onlineBusy=true;const refreshButton=document.getElementById("onlineRefreshBtn");if(refreshButton)refreshButton.disabled=true;
  const now=new Date(), dateOnly=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
  const future=new Date(now);future.setFullYear(future.getFullYear()+3);
  const recentStart=new Date(now);recentStart.setDate(recentStart.getDate()-45);
  const base={page_size:40,platforms:"187",stores:"3"};
- const makeUrl=params=>{const u=new URL(RAWG_BASE+"/games");Object.entries({...base,...params,key:getRawgKey()}).forEach(([k,v])=>u.searchParams.set(k,v));return u.toString()};
+ const makeUrl=params=>{const u=new URL("https://api.rawg.io/api/games");Object.entries({...base,...params}).forEach(([k,v])=>u.searchParams.set(k,String(v)));return u.toString()};
  const changes=[];let futureGames=[],recentGames=[],errors=[];
  const previous=(()=>{try{return JSON.parse(localStorage.getItem(UPDATE_SNAPSHOT_KEY)||"null")}catch(e){return null}})();
  try{
@@ -701,8 +689,6 @@ document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFull
 const AUTO_SYNC_KEY="gamescope_owner_auto_sync_at_v1";
 async function autoRefreshUpcoming(){
  if(!window.gamescopeOwnerAuthenticated){setOnlineStatus("کاتالوگ عمومی برای همه قابل مشاهده است؛ به‌روزرسانی سراسری فقط از حساب مالک انجام می‌شود.");return}
- const key=getRawgKey();
- if(!key){setOnlineStatus("برای به‌روزرسانی سراسری، مالک باید کلید RAWG را یک‌بار وارد و ذخیره کند.");return}
  const last=Number(localStorage.getItem(AUTO_SYNC_KEY)||0);
  if(Date.now()-last<6*60*60*1000||onlineBusy)return;
  localStorage.setItem(AUTO_SYNC_KEY,String(Date.now()));
@@ -722,7 +708,7 @@ setTimeout(()=>{
 setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeOwnerAuthenticated&&!onlineBusy)autoRefreshUpcoming()},30*60*1000);
 document.getElementById("onlineSearch").addEventListener("keydown",e=>{if(e.key==="Enter")loadOnlineGames({query:e.target.value.trim()})});
 document.getElementById("onlineMore").addEventListener("click",()=>{if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true})});
-try{const savedKey=localStorage.getItem(RAWG_KEY_STORAGE);if(savedKey)document.getElementById("rawgKey").value=savedKey}catch(e){}
+try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
 
 function render(){
  const all=allGames();document.getElementById("countStat").textContent=all.filter(g=>g.owned).length;
