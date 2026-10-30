@@ -876,7 +876,6 @@ render();
  function setOwnerUI(value){
   isOwner=!!value;window.gamescopeOwnerAuthenticated=isOwner;
   $("gsOwnerMenuWrap").classList.toggle("hidden",!isOwner);
-  $("onlineRefreshBtn").classList.toggle("hidden",!isOwner);
   if(!isOwner){$("gsOwnerMenu").classList.add("hidden");$("gsAdminOverlay").classList.remove("open");}else if(window.gamescopeScheduleOwnerAutoUpdate)window.gamescopeScheduleOwnerAutoUpdate();
  }
  async function refreshOwnerState(user){
