@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/sitemap.xml
