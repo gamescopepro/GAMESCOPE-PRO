@@ -9,13 +9,13 @@
 <meta name="googlebot" content="index, follow">
 <meta name="application-name" content="GAMESCOPE PRO">
 <meta name="author" content="GAMESCOPE PRO">
-<link rel="canonical" href="https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/">
+<link rel="canonical" href="https://gamescopepro.github.io/GAMESCOPE-PRO/">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="GAMESCOPE PRO">
 <meta property="og:title" content="GAMESCOPE PRO | Global Video Game Catalog">
 <meta property="og:description" content="Discover video games across PC, PlayStation, Xbox, Nintendo and mobile. Explore upcoming releases, platforms and game details.">
-<meta property="og:url" content="https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/">
+<meta property="og:url" content="https://gamescopepro.github.io/GAMESCOPE-PRO/">
 <meta property="og:locale" content="fa_IR">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="GAMESCOPE PRO | Global Video Game Catalog">
@@ -27,8 +27,8 @@
   "@graph": [
     {
       "@type": "WebSite",
-      "@id": "https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/#website",
-      "url": "https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/",
+      "@id": "https://gamescopepro.github.io/GAMESCOPE-PRO/#website",
+      "url": "https://gamescopepro.github.io/GAMESCOPE-PRO/",
       "name": "GAMESCOPE PRO",
       "alternateName": "GAMESCOPE",
       "description": "A global video game catalog for PC, PlayStation, Xbox, Nintendo and mobile, with game details and upcoming releases.",
@@ -36,9 +36,9 @@
     },
     {
       "@type": "WebApplication",
-      "@id": "https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/#application",
+      "@id": "https://gamescopepro.github.io/GAMESCOPE-PRO/#application",
       "name": "GAMESCOPE PRO",
-      "url": "https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/",
+      "url": "https://gamescopepro.github.io/GAMESCOPE-PRO/",
       "applicationCategory": "GameApplication",
       "operatingSystem": "Any",
       "browserRequirements": "Requires JavaScript enabled",
@@ -668,11 +668,30 @@ async function loadOnlineGames({query="",append=false}={}){
    document.getElementById("onlineResults").innerHTML='<div class="empty" style="grid-column:1/-1">نتیجهٔ دقیقی از RAWG پیدا نشد؛ این به معنی نبودن بازی در PlayStation Store نیست. املای دیگر یا بخشی از نام را امتحان کن.'+storeFallback+'</div>';
   }
  }catch(err){
-  // Preserve the official Phantom Blade Zero result even if RAWG is down.
+  // Keep the public database catalogue usable even when the live RAWG proxy is unavailable.
+  onlineNextQueue=[];onlineNext=null;
+  let cachedCatalog=[];
+  try{
+   if(typeof window.gamescopeFetchPublicCatalog==="function"){
+    cachedCatalog=(await window.gamescopeFetchPublicCatalog(true)).map(siteCatalogRowToRawg).filter(Boolean);
+    if(onlineUpcomingMode)cachedCatalog=cachedCatalog.filter(g=>g.releaseStatus==="upcoming");
+    else if(originalQuery){
+     const variants=searchVariants(originalQuery);
+     cachedCatalog=cachedCatalog.filter(g=>scoreGameSearchResult(g.name,originalQuery,variants)<1000);
+    }
+   }
+  }catch(fallbackError){console.warn("Stored public catalog fallback failed:",fallbackError)}
   if(isPhantomSearch&&!append){
    renderOnlineResults([officialPhantom],false);
-   setOnlineStatus("Phantom Blade Zero از صفحهٔ رسمی PlayStation نمایش داده شد. سرویس RAWG فعلاً در دسترس نیست؛ اطلاعات رسمی و لینک فروشگاه همچنان موجودند.");
-  }else setOnlineStatus("خطا: "+(err.message||"ارتباط با سرویس مرکزی بازی‌ها برقرار نشد.")+" اتصال اینترنت را بررسی کن.");
+   setOnlineStatus("Phantom Blade Zero از صفحهٔ رسمی PlayStation نمایش داده شد. سرویس زندهٔ RAWG موقتاً در دسترس نیست.");
+  }else if(cachedCatalog.length){
+   renderOnlineResults(cachedCatalog,false);
+   setOnlineStatus("اتصال زندهٔ RAWG موقتاً برقرار نشد؛ "+cachedCatalog.length.toLocaleString("fa-IR")+" بازی ذخیره‌شده در کاتالوگ عمومی نمایش داده شد. خطا: "+(err.message||"خطای شبکه"));
+  }else{
+   document.getElementById("onlineResults").innerHTML='<div class="empty" style="grid-column:1/-1">فعلاً اتصال به منبع زنده برقرار نشد و برای این جست‌وجو موردی در کاتالوگ ذخیره‌شده پیدا نشد. اتصال اینترنت را بررسی کن و کمی بعد دوباره تلاش کن.</div>';
+   document.getElementById("onlineMore").classList.add("hidden");
+   setOnlineStatus("خطا: "+(err.message||"ارتباط با سرویس مرکزی بازی‌ها برقرار نشد.")+" اتصال اینترنت را بررسی کن.");
+  }
  }finally{onlineBusy=false;onlineLastLoadedAt=Date.now();more.disabled=false}
 }
 window.gamescopeSearchOnlineFromMain=function(){
