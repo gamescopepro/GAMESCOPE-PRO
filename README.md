@@ -3,7 +3,7 @@
 **GAMESCOPE PRO** is a global video game discovery catalog.
 
 Visit the live website:  
-https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/
+https://gamescopepro.github.io/GAMESCOPE-PRO/
 
 ## Discover games across platforms
 
