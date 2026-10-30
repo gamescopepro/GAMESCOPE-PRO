@@ -191,13 +191,12 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 <div class="toolbar"><div class="search"><input id="search" placeholder="🔎 جست‌وجوی بازی‌ها..." autocomplete="off"></div><button id="addToggle">＋ افزودن بازی</button><button class="secondary" id="exportBtn">خروجی پشتیبان</button><button class="secondary" id="importBtn">ورود پشتیبان</button><input id="importFile" type="file" accept=".json,application/json" class="hidden"></div>
 <div class="panel" id="onlinePanel">
   <div class="section-title"><h3>🌐 کاتالوگ آنلاین بازی‌ها</h3><span class="hint">اطلاعات از RAWG</span></div>
-  <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ عمومی همهٔ پلتفرم‌ها را می‌بینی؛ برای بازی‌های آیندهٔ PS5 از دکمهٔ مربوطه استفاده کن. اتصال RAWG از سرور مرکزی GAMESCOPE انجام می‌شود؛ کلید API در کد سایت یا مرورگر بازدیدکنندگان قرار نمی‌گیرد و کاربران برای جست‌وجو به کلید شخصی نیاز ندارند. پوشش و دقت نتایج به داده‌های منبع بستگی دارد.</p>
+  <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ آنلاین بازی‌های همهٔ پلتفرم‌ها را نمایش می‌دهد و هنگام بازبودن سایت هر ۵ دقیقه تازه می‌شود. همگام‌سازی کاتالوگ عمومی و گزارش تغییرات هر ۱۵ دقیقه، فقط وقتی حساب مالک وارد سایت است و صفحه باز مانده باشد، اجرا می‌شود. اتصال RAWG از سرور مرکزی GAMESCOPE انجام می‌شود؛ کلید API در کد سایت یا مرورگر بازدیدکنندگان قرار نمی‌گیرد و کاربران برای جست‌وجو به کلید شخصی نیاز ندارند. پوشش و دقت نتایج به داده‌های منبع بستگی دارد.</p>
   <div class="formgrid">
     <div class="field full"><label for="onlineSearch">جست‌وجوی آنلاین بازی (نام دقیق یا کوتاه)</label><input id="onlineSearch" placeholder="نام هر بازی؛ حتی بازی‌های پلتفرم‌های دیگر"></div>
     <div class="field"><button id="onlineSearchBtn">🔎 جست‌وجو</button></div>
     <div class="field"><button class="secondary" id="onlineBrowseBtn">نمایش همه بازی‌ها</button></div>
     <div class="field full"><button id="onlineUpcomingBtn">🗓️ بازی‌های آیندهٔ PS5 که در PlayStation Store ثبت شده‌اند</button></div>
-    <div class="field full"><button class="secondary hidden" id="onlineRefreshBtn">🔄 به‌روزرسانی کاتالوگ عمومی و گزارش تغییرات</button></div>
   </div>
   <p class="hint">منبع داده: <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">RAWG API</a>. برای استفاده رایگان، شرایط انتساب منبع و محدودیت درخواست‌ها را رعایت کن.</p>
   <div id="onlineStatus" class="hint" role="status" aria-live="polite" style="margin-top:8px"></div>
@@ -206,8 +205,8 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
     <div style="height:9px;border-radius:99px;background:#162c42;overflow:hidden"><div id="updateProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#38d7ff,#60e6a8);transition:width .25s"></div></div>
   </div>
   <div id="updateLogPanel" style="margin-top:12px;padding:12px;border:1px solid #24486a;border-radius:12px;background:#0b1b2d">
-    <div style="font-weight:700;margin-bottom:8px">🧾 گزارش آخرین بررسی</div>
-    <div id="updateLog" class="hint" aria-live="polite">هنوز بررسی‌ای انجام نشده؛ روی «به‌روزرسانی بازی‌ها» بزن.</div>
+    <div style="font-weight:700;margin-bottom:8px">🧾 گزارش آخرین به‌روزرسانی خودکار</div>
+    <div id="updateLog" class="hint" aria-live="polite">گزارش بررسی‌های خودکار اینجا نمایش داده می‌شود.</div>
   </div>
   <div id="onlineResults" class="grid" style="margin-top:12px"></div>
   <div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button id="onlineMore" class="secondary hidden">بازی‌های بیشتر</button></div>
@@ -255,7 +254,7 @@ async function rawgFetch(path,params={}){
   if(response.status===502)throw new Error(data.message||"کلید RAWG در سرور معتبر نیست یا دسترسی آن محدود شده است.");
   throw new Error(data.message||data.error||("خطای سرویس مرکزی ("+response.status+")"));
  }
- rawgResponseCache.set(cacheKey,{data,expiresAt:Date.now()+120000});
+ rawgResponseCache.set(cacheKey,{data,expiresAt:Date.now()+60000});
  if(rawgResponseCache.size>180){for(const [key,item] of rawgResponseCache){if(item.expiresAt<=Date.now())rawgResponseCache.delete(key)}}
  return data
 }
@@ -616,7 +615,7 @@ async function runFullUpdate({silent=false}={}){
  const now=new Date(), dateOnly=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
  const future=new Date(now);future.setFullYear(future.getFullYear()+3);
  const recentStart=new Date(now);recentStart.setDate(recentStart.getDate()-45);
- const base={page_size:40,platforms:"187",stores:"3"};
+ const base={page_size:40};
  const makeUrl=params=>{const u=new URL("https://api.rawg.io/api/games");Object.entries({...base,...params}).forEach(([k,v])=>u.searchParams.set(k,String(v)));return u.toString()};
  const changes=[];let futureGames=[],recentGames=[],errors=[];
  const previous=(()=>{try{return JSON.parse(localStorage.getItem(UPDATE_SNAPSHOT_KEY)||"null")}catch(e){return null}})();
@@ -637,7 +636,7 @@ async function runFullUpdate({silent=false}={}){
     }
     return items;
   }
-  futureGames=await fetchCategoryPages({dates:dateOnly(now)+","+dateOnly(future),ordering:"released"},12,43,"دریافت بازی‌های آیندهٔ PS5");
+  futureGames=await fetchCategoryPages({dates:dateOnly(now)+","+dateOnly(future),ordering:"released"},12,43,"دریافت بازی‌های آیندهٔ همهٔ پلتفرم‌ها");
   setUpdateProgress(48,"۴۸٪ — بررسی بازی‌های منتشرشدهٔ اخیر");
   recentGames=await fetchCategoryPages({dates:dateOnly(recentStart)+","+dateOnly(now),ordering:"-released"},50,77,"دریافت بازی‌های منتشرشدهٔ اخیر");
   // حذف تکراری‌ها در صورت تکرار یک عنوان بین صفحات.
@@ -669,7 +668,7 @@ async function runFullUpdate({silent=false}={}){
   onlineUpcomingMode=true;
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults(futureGames,false);
-  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه شدند؛ موارد در گزارش، تغییرات واقعی ذخیره‌شده هستند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ فروشگاه را تضمین نمی‌کند.";
+  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG برای همهٔ پلتفرم‌ها دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه و ذخیره شدند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ بازی‌های دنیا یا همهٔ فروشگاه‌ها را تضمین نمی‌کند.";
   if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
   else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
   else note+=" این بررسی فقط فهرست آنلاین را تازه کرد؛ انتشار تغییرات سراسری فقط با ورود مالک انجام می‌شود.";
@@ -686,13 +685,12 @@ async function runFullUpdate({silent=false}={}){
   document.getElementById("updateLog").textContent="این بررسی کامل نشد. گزارش قبلی حفظ شد؛ پس از رفع خطا دوباره تلاش کن.";
  }finally{onlineBusy=false;if(refreshButton)refreshButton.disabled=false;}
 }
-document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFullUpdate());
 // Automatic global synchronization is owner-only and throttled to avoid repeated RAWG requests.
-const AUTO_SYNC_KEY="gamescope_owner_auto_sync_at_v1";
+const AUTO_SYNC_KEY="gamescope_owner_auto_sync_at_v2";
 async function autoRefreshUpcoming(){
  if(!window.gamescopeOwnerAuthenticated){setOnlineStatus("کاتالوگ عمومی برای همه قابل مشاهده است؛ به‌روزرسانی سراسری فقط از حساب مالک انجام می‌شود.");return}
  const last=Number(localStorage.getItem(AUTO_SYNC_KEY)||0);
- if(Date.now()-last<6*60*60*1000||onlineBusy)return;
+ if(Date.now()-last<15*60*1000||onlineBusy)return;
  localStorage.setItem(AUTO_SYNC_KEY,String(Date.now()));
  onlineUpcomingMode=true;
  await runFullUpdate({silent:true});
@@ -708,10 +706,10 @@ function refreshOnlineCatalogIfNeeded(force=false){
 }
 window.addEventListener("online",()=>refreshOnlineCatalogIfNeeded(true));
 document.addEventListener("visibilitychange",()=>refreshOnlineCatalogIfNeeded(false));
-// While the page stays open, refresh the current catalog view periodically.
-setInterval(()=>refreshOnlineCatalogIfNeeded(true),30*60*1000);
-// Owner-only global synchronization remains separate from public browsing.
-setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeOwnerAuthenticated&&!onlineBusy)autoRefreshUpcoming()},30*60*1000);
+// Public online listings refresh every five minutes while the page is open.
+setInterval(()=>refreshOnlineCatalogIfNeeded(true),5*60*1000);
+// The shared catalog and report sync runs every fifteen minutes while the owner is signed in and this page is open.
+setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeOwnerAuthenticated&&!onlineBusy)autoRefreshUpcoming()},15*60*1000);
 document.getElementById("onlineSearch").addEventListener("keydown",e=>{if(e.key==="Enter")loadOnlineGames({query:e.target.value.trim()})});
 document.getElementById("onlineMore").addEventListener("click",()=>{if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true})});
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
