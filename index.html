@@ -230,11 +230,6 @@ let filter="all", query="", renderLimit=48;
 // The public starter/recommended catalogue was intentionally removed.
 // Keep only games saved by the user in this personal list.
 function allGames(){return userGames.filter(u=>!String(u.id).startsWith("seed")&&!String(u.id).startsWith("site_"))}
-const KEY="sadra_pshub_v1";
-let userGames=[];try{userGames=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){userGames=[]}
-let filter="all", query="", renderLimit=48;
-let seed=catalog.map((x,i)=>({id:"seed"+i,title:x[0],genre:x[1],emoji:x[2],critic:x[3],publisher:"",releaseDate:"",releaseStatus:"unknown",storeUrl:"",owned:false,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:i}));
-function allGames(){const byId=new Map(userGames.map(u=>[String(u.id),u]));const seedIds=new Set(seed.map(g=>String(g.id)));return seed.map(g=>{const u=byId.get(String(g.id));return u?{...g,owned:!!u.owned,fav:!!u.fav,status:u.status||g.status||"در فهرست علاقه‌مندی",rating:u.rating===undefined?g.rating:u.rating,note:typeof u.note==="string"?u.note:(g.note||""),created:u.created||g.created}:{...g}}).concat(userGames.filter(u=>!String(u.id).startsWith("seed")&&!String(u.id).startsWith("site_")&&!seedIds.has(String(u.id))))}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(userGames));return true}catch(e){toast("ذخیره‌سازی مرورگر انجام نشد؛ فضای ذخیره‌سازی یا تنظیمات حریم خصوصی را بررسی کن");return false}}
 function saveObj(g){g.updated=Date.now();const i=userGames.findIndex(x=>x.id===g.id);if(i>=0)userGames[i]=g;else userGames.push(g);persist();render();if(window.gamescopeSyncGame)window.gamescopeSyncGame(g)}
 function getGame(id){return allGames().find(g=>String(g.id)===String(id))}
