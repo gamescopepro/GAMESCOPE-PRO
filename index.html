@@ -193,8 +193,6 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
   <div class="section-title"><h3>🌐 کاتالوگ آنلاین بازی‌ها</h3><span class="hint">اطلاعات از RAWG</span></div>
   <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ عمومی همهٔ پلتفرم‌ها را می‌بینی؛ برای بازی‌های آیندهٔ PS5 از دکمهٔ مربوطه استفاده کن. اتصال RAWG از سرور مرکزی GAMESCOPE انجام می‌شود؛ کلید API در کد سایت یا مرورگر بازدیدکنندگان قرار نمی‌گیرد و کاربران برای جست‌وجو به کلید شخصی نیاز ندارند. پوشش و دقت نتایج به داده‌های منبع بستگی دارد.</p>
   <div class="formgrid">
-    <div class="field full"><div class="admin-notice" style="margin:0">🔐 اتصال مرکزی امن — هیچ بازدیدکننده‌ای نیازی به واردکردن کلید API ندارد.</div></div>
-    <div class="field"><button class="secondary" id="onlineToggle">نمایش کاتالوگ آنلاین</button></div>
     <div class="field full"><label for="onlineSearch">جست‌وجوی آنلاین بازی (نام دقیق یا کوتاه)</label><input id="onlineSearch" placeholder="نام هر بازی؛ حتی بازی‌های پلتفرم‌های دیگر"></div>
     <div class="field"><button id="onlineSearchBtn">🔎 جست‌وجو</button></div>
     <div class="field"><button class="secondary" id="onlineBrowseBtn">نمایش همه بازی‌ها</button></div>
@@ -237,7 +235,7 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 
 const RAWG_PROXY_URL="https://axwjiwpwqoykvcbumixy.supabase.co/functions/v1/game-catalog";
 const RAWG_PROXY_PUBLIC_KEY="sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-";
-let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLastQuery="", onlineBusy=false, onlineUpcomingMode=false;
+let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLastQuery="", onlineBusy=false, onlineUpcomingMode=false, onlineLastLoadedAt=0;
 const onlineCache=new Map();
 const rawgResponseCache=new Map();
 function setOnlineStatus(message){const el=document.getElementById("onlineStatus");if(el)el.textContent=message}
@@ -493,7 +491,6 @@ async function loadOnlineGames({query="",append=false}={}){
  const officialPhantom=phantomBladeZeroOfficialRecord();
  onlineBusy=true;
  document.getElementById("onlineResults").classList.remove("hidden");
- document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
  const more=document.getElementById("onlineMore");more.disabled=true;
  setOnlineStatus(append?"در حال دریافت صفحه بعدی…":"در حال جست‌وجوی دقیق بازی‌ها و نام‌های جایگزین…");
  try{
@@ -583,13 +580,8 @@ async function loadOnlineGames({query="",append=false}={}){
    renderOnlineResults([officialPhantom],false);
    setOnlineStatus("Phantom Blade Zero از صفحهٔ رسمی PlayStation نمایش داده شد. سرویس RAWG فعلاً در دسترس نیست؛ اطلاعات رسمی و لینک فروشگاه همچنان موجودند.");
   }else setOnlineStatus("خطا: "+(err.message||"ارتباط با سرویس مرکزی بازی‌ها برقرار نشد.")+" اتصال اینترنت را بررسی کن.");
- }finally{onlineBusy=false;more.disabled=false}
+ }finally{onlineBusy=false;onlineLastLoadedAt=Date.now();more.disabled=false}
 }
-document.getElementById("onlineToggle").addEventListener("click",()=>{
- const box=document.getElementById("onlineResults"),isHidden=box.classList.toggle("hidden");
- document.getElementById("onlineToggle").textContent=isHidden?"نمایش کاتالوگ آنلاین":"پنهان‌کردن کاتالوگ آنلاین";
- if(!isHidden&&!box.children.length)loadOnlineGames({query:""});
-});
 window.gamescopeSearchOnlineFromMain=function(){
  const q=document.getElementById("search").value.trim();
  if(!q)return;
@@ -677,7 +669,6 @@ async function runFullUpdate({silent=false}={}){
   onlineUpcomingMode=true;
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults(futureGames,false);
-  document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
   let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه شدند؛ موارد در گزارش، تغییرات واقعی ذخیره‌شده هستند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ فروشگاه را تضمین نمی‌کند.";
   if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
   else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
@@ -707,15 +698,19 @@ async function autoRefreshUpcoming(){
  await runFullUpdate({silent:true});
 }
 window.gamescopeScheduleOwnerAutoUpdate=()=>setTimeout(()=>autoRefreshUpcoming(),1200);
-window.addEventListener("online",()=>{if(document.visibilityState==="visible")autoRefreshUpcoming()});
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&window.gamescopeOwnerAuthenticated)autoRefreshUpcoming()});
-// Display online catalogue, but don't trigger global writes for ordinary visitors.
-document.getElementById("onlineResults").classList.remove("hidden");
-document.getElementById("onlineToggle").textContent="پنهان‌کردن کاتالوگ آنلاین";
-setTimeout(()=>{
- if(window.gamescopeOwnerAuthenticated)autoRefreshUpcoming();
- else setOnlineStatus("کاتالوگ آنلاین آماده است. به‌روزرسانی سراسری فقط توسط مالک انجام می‌شود؛ کاربران عادی همچنان می‌توانند جست‌وجو کنند.");
-},800);
+// کاتالوگ به‌صورت خودکار هنگام بازشدن سایت بارگیری می‌شود و نیازی به دکمهٔ نمایش ندارد.
+setTimeout(()=>loadOnlineGames({query:""}),350);
+function refreshOnlineCatalogIfNeeded(force=false){
+ if(document.visibilityState!=="visible"||!navigator.onLine||onlineBusy)return;
+ if(!force&&Date.now()-onlineLastLoadedAt<5*60*1000)return;
+ const query=document.getElementById("onlineSearch").value.trim();
+ loadOnlineGames({query});
+}
+window.addEventListener("online",()=>refreshOnlineCatalogIfNeeded(true));
+document.addEventListener("visibilitychange",()=>refreshOnlineCatalogIfNeeded(false));
+// While the page stays open, refresh the current catalog view periodically.
+setInterval(()=>refreshOnlineCatalogIfNeeded(true),30*60*1000);
+// Owner-only global synchronization remains separate from public browsing.
 setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeOwnerAuthenticated&&!onlineBusy)autoRefreshUpcoming()},30*60*1000);
 document.getElementById("onlineSearch").addEventListener("keydown",e=>{if(e.key==="Enter")loadOnlineGames({query:e.target.value.trim()})});
 document.getElementById("onlineMore").addEventListener("click",()=>{if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true})});
