@@ -662,6 +662,8 @@ function scoreGameSearchResult(gameName,query,variants){
  if(canonical){
   const canonicalName=normalizeGameName(canonical);
   if(name===canonicalName)return 0;
+  const aliasEntry=GAME_SEARCH_ALIASES.find(entry=>entry.canonical===canonical);
+  if(aliasEntry&&aliasEntry.aliases.some(alias=>normalizeGameName(stripSearchNoise(alias))===name))return 1;
   if(name.startsWith(canonicalName+" "))return 3+(name.length-canonicalName.length)/100;
  }
  if(compactTarget.length>=4&&compactName.includes(compactTarget))return 5+Math.max(0,compactName.length-compactTarget.length)/100;
