@@ -2,5 +2,18 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://gamescopepro.github.io/GAMESCOPE-PRO/</loc>
+    <lastmod>2026-10-31</lastmod>
+  </url>
+  <url>
+    <loc>https://gamescopepro.github.io/GAMESCOPE-PRO/about/</loc>
+    <lastmod>2026-10-31</lastmod>
+  </url>
+  <url>
+    <loc>https://gamescopepro.github.io/GAMESCOPE-PRO/faq/</loc>
+    <lastmod>2026-10-31</lastmod>
+  </url>
+  <url>
+    <loc>https://gamescopepro.github.io/GAMESCOPE-PRO/data-sources/</loc>
+    <lastmod>2026-10-31</lastmod>
   </url>
 </urlset>
