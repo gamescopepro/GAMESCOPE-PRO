@@ -2,3 +2,6 @@ project_id = "axwjiwpwqoykvcbumixy"
 
 [functions.catalog-sync]
 verify_jwt = false
+
+[functions.game-catalog]
+verify_jwt = false
