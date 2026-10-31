@@ -431,14 +431,14 @@ function onlinePlatformLabels(game){
  const add=value=>{const key=value.toLowerCase();if(!seen.has(key)){seen.add(key);labels.push(value)}};
  let hasPc=false;
  for(const name of source){
-  const n=name.toLowerCase().replace(/\\s+/g," ");
+  const n=name.toLowerCase().replace(/\s+/g," ");
   if(["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(n)){hasPc=true;continue}
-  if(/^playstation\\s*5|^ps\\s*5\\b/.test(n)){add("PlayStation 5");continue}
-  if(/^playstation\\s*4|^ps\\s*4\\b/.test(n)){add("PlayStation 4");continue}
-  if(/^playstation\\s*3|^ps\\s*3\\b/.test(n)){add("PlayStation 3");continue}
-  if(/^playstation\\s*2|^ps\\s*2\\b/.test(n)){add("PlayStation 2");continue}
+  if(/^playstation\s*5|^ps\s*5\b/.test(n)){add("PlayStation 5");continue}
+  if(/^playstation\s*4|^ps\s*4\b/.test(n)){add("PlayStation 4");continue}
+  if(/^playstation\s*3|^ps\s*3\b/.test(n)){add("PlayStation 3");continue}
+  if(/^playstation\s*2|^ps\s*2\b/.test(n)){add("PlayStation 2");continue}
   if(/^playstation vita|^ps vita/.test(n)){add("PlayStation Vita");continue}
-  if(/^psp\\b/.test(n)){add("PSP");continue}
+  if(/^psp\b/.test(n)){add("PSP");continue}
   if(/^playstation/.test(n)){add(name);continue}
   if(/^xbox.*series|^series.*xbox/.test(n)){add("Xbox Series X|S");continue}
   if(/^xbox.*one|^one.*xbox/.test(n)){add("Xbox One");continue}
@@ -508,7 +508,7 @@ function renderOnlineResults(results,append=false){
   const genre=esc((g.genres||[]).map(x=>x.name).join("، ")||"ژانر نامشخص");
   const platforms=esc(onlinePlatformLabels(g).join("، ")||"پلتفرم نامشخص");
   const imageUrl=typeof g.background_image==="string"?g.background_image:"";
-  const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\\'has-cover\\');this.parentElement.classList.add(\\'cover-missing\\')" style="width:100%;height:100%;object-fit:cover">':"";
+  const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove('has-cover');this.parentElement.classList.add('cover-missing')" style="width:100%;height:100%;object-fit:cover">':"";
   const release=esc(g.released||"تاریخ انتشار نامشخص");
   const rating=Number.isFinite(Number(g.rating))&&g.rating?Number(g.rating).toFixed(1):"—";
   const today=new Date().toISOString().slice(0,10);
@@ -523,7 +523,7 @@ function renderOnlineResults(results,append=false){
   const saved=userGames.find(x=>String(x.rawgId||"")===String(g.id)||String(x.id)==="rawg_"+String(g.id)||normalizeGameName(x.title)===normalizeGameName(g.name||""));
   const addLabel=saved?(saved.owned?"✓ در کتابخانه":"✓ در بازی‌های من"):"＋ افزودن به بازی‌های من";
   const coverClass=imageUrl?"has-cover":"cover-missing";
-  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="font-size:11px;color:#80a8c9">منبع اطلاعات: '+sourceLabel+'</div><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta js-online-platforms">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+' • '+releaseBadge+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions js-online-store-links" style="flex-wrap:wrap"><button onclick="addRawgGame(\\''+esc(String(g.id))+'\\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>';
+  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="font-size:11px;color:#80a8c9">منبع اطلاعات: '+sourceLabel+'</div><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta js-online-platforms">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+' • '+releaseBadge+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions js-online-store-links" style="flex-wrap:wrap"><button onclick="addRawgGame(\''+esc(String(g.id))+'\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>';
  }).join("");
  box.insertAdjacentHTML("beforeend",html);
  const hasStoredMore=!onlineLastQuery&&typeof window.gamescopePublicCatalogHasMore==="function"&&window.gamescopePublicCatalogHasMore();
@@ -886,9 +886,9 @@ async function runFullUpdate({silent=false}={}){
   localStorage.setItem(UPDATE_SNAPSHOT_KEY,JSON.stringify({future:currentFuture,recent:currentRecent,checkedAt:now.toISOString()}));
   setUpdateProgress(90,"۹۰٪ — نمایش نتایج و گزارش تغییرات");
   // Render future games in the existing catalog using the same card renderer.
-  onlineUpcomingMode=true;
+  onlineLastQuery="";onlineNext=null;onlineNextQueue=[];onlineLocalQueue=[];
   document.getElementById("onlineResults").classList.remove("hidden");
-  renderOnlineResults(futureGames,false);
+  renderOnlineResults([...recentGames,...futureGames],false);
   let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG با فیلتر PlayStation، PC و Xbox دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه و ذخیره شدند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ بازی‌های دنیا یا همهٔ فروشگاه‌ها را تضمین نمی‌کند.";
   if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
   else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
@@ -1172,29 +1172,16 @@ render();
  async function fetchVisibleCatalogPage(offset,limit,searchTerm=""){
   let query=client.from("site_catalog")
    .select("id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,updated_at")
-   .eq("is_hidden",false)
-   .order("updated_at",{ascending:false})
-   .order("id",{ascending:true})
-   .range(offset,offset+limit-1);
+   .eq("is_hidden",false);
   if(searchTerm){
-   const safeTerm=String(searchTerm).replace(/[\\\\%_]/g,"\\\\ window.gamescopeFetchPublicCatalog=async function(force=false){
-  const cached=window.__gamescopePublicCatalogRows;
-  const loadedAt=Number(window.__gamescopePublicCatalogLoadedAt||0);
-  if(!force&&Array.isArray(cached)&&Date.now()-loadedAt<5*60*1000)return cached;
-  const data=await fetchAllCatalogRows({visibleOnly:true});
-  window.__gamescopePublicCatalogRows=data.filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
-  window.__gamescopePublicCatalogLoadedAt=Date.now();
-  return window.__gamescopePublicCatalogRows;
- };");
-   query=client.from("site_catalog")
-    .select("id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,updated_at")
-    .eq("is_hidden",false)
-    .ilike("title","%"+safeTerm+"%")
+   const safeTerm=String(searchTerm).replace(/[%_]/g," ");
+   query=query.ilike("title","%"+safeTerm+"%")
     .order("title",{ascending:true})
-    .order("id",{ascending:true})
-    .range(offset,offset+limit-1);
+    .order("id",{ascending:true});
+  }else{
+   query=query.order("updated_at",{ascending:false}).order("id",{ascending:true});
   }
-  const {data,error}=await query;
+  const {data,error}=await query.range(offset,offset+limit-1);
   if(error)throw error;
   return (Array.isArray(data)?data:[]).filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
  }
