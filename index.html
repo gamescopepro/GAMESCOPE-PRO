@@ -290,7 +290,6 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
     <div class="field full"><label for="onlineSearch">جست‌وجوی آنلاین بازی (نام دقیق یا کوتاه)</label><input id="onlineSearch" placeholder="نام هر بازی؛ حتی بازی‌های پلتفرم‌های دیگر"></div>
     <div class="field"><button id="onlineSearchBtn">🔎 جست‌وجو</button></div>
     <div class="field"><button class="secondary" id="onlineBrowseBtn">نمایش همه بازی‌ها</button></div>
-    <div class="field full"><button id="onlineUpcomingBtn">🗓️ بازی‌های آیندهٔ PlayStation، PC و Xbox</button></div>
     <div class="field full"><button id="onlineRefreshBtn" class="secondary" type="button">🔄 بررسی فوری RAWG و تازه‌سازی</button></div>
   </div>
   <p class="hint">منابع: <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">RAWG</a> · <a href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">Steam Store</a> و <a href="https://steamspy.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">SteamSpy</a> · <a href="https://www.gog.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">GOG (فعلاً غیرفعال)</a> · <a href="https://api-docs.igdb.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">IGDB</a> (فعال‌سازی با اعتبارنامهٔ امن لازم است). شرایط استفاده و انتساب هر منبع رعایت می‌شود.</p>
@@ -329,7 +328,7 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 
 const RAWG_PROXY_URL="https://axwjiwpwqoykvcbumixy.supabase.co/functions/v1/game-catalog";
 const RAWG_PROXY_PUBLIC_KEY="sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-";
-let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLocalQueue=[], onlineRenderedNames=new Map(), onlineLastQuery="", onlineBusy=false, onlineUpcomingMode=false, onlineLastLoadedAt=0;
+let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLocalQueue=[], onlineRenderedNames=new Map(), onlineLastQuery="", onlineBusy=false, onlineLastLoadedAt=0;
 const onlineCache=new Map();
 const rawgResponseCache=new Map();
 function setOnlineStatus(message){const el=document.getElementById("onlineStatus");if(el)el.textContent=message}
@@ -424,58 +423,111 @@ function addRawgGame(id){
   toast("به «بازی‌های من» اضافه شد؛ حالا می‌توانی جداگانه به کتابخانه منتقلش کنی.");
  }
 }
+function onlinePlatformLabels(game){
+ const source=(Array.isArray(game?.platforms)?game.platforms:[])
+  .map(item=>String(item?.platform?.name||item?.name||"").trim())
+  .filter(Boolean);
+ const labels=[],seen=new Set();
+ const add=value=>{const key=value.toLowerCase();if(!seen.has(key)){seen.add(key);labels.push(value)}};
+ let hasPc=false;
+ for(const name of source){
+  const n=name.toLowerCase().replace(/\\s+/g," ");
+  if(["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(n)){hasPc=true;continue}
+  if(/^playstation\\s*5|^ps\\s*5\\b/.test(n)){add("PlayStation 5");continue}
+  if(/^playstation\\s*4|^ps\\s*4\\b/.test(n)){add("PlayStation 4");continue}
+  if(/^playstation\\s*3|^ps\\s*3\\b/.test(n)){add("PlayStation 3");continue}
+  if(/^playstation\\s*2|^ps\\s*2\\b/.test(n)){add("PlayStation 2");continue}
+  if(/^playstation vita|^ps vita/.test(n)){add("PlayStation Vita");continue}
+  if(/^psp\\b/.test(n)){add("PSP");continue}
+  if(/^playstation/.test(n)){add(name);continue}
+  if(/^xbox.*series|^series.*xbox/.test(n)){add("Xbox Series X|S");continue}
+  if(/^xbox.*one|^one.*xbox/.test(n)){add("Xbox One");continue}
+  if(/^xbox.*360/.test(n)){add("Xbox 360");continue}
+  if(/^xbox/.test(n)){add("Xbox")}
+ }
+ if(hasPc)add("PC");
+ const order={"PC":0,"PlayStation 5":1,"PlayStation 4":2,"PlayStation 3":3,"PlayStation 2":4,"PlayStation Vita":5,"PSP":6,"Xbox Series X|S":7,"Xbox One":8,"Xbox 360":9,"Xbox":10};
+ labels.sort((a,b)=>(order[a]??20)-(order[b]??20));
+ return labels;
+}
+function mergeOnlineGameData(target,incoming){
+ const platforms=onlinePlatformLabels({...target,platforms:[...(target.platforms||[]),...(incoming.platforms||[])]});
+ target.platforms=platforms.map(name=>({platform:{name}}));
+ const mergePeople=(a,b)=>[...new Map([...(a||[]),...(b||[])].map(x=>{
+  const name=String(typeof x==="string"?x:x?.name||"").trim();return [name.toLowerCase(),{name}];
+ }).filter(([key])=>key[0])).values()];
+ target.publishers=mergePeople(target.publishers,incoming.publishers);
+ target.developers=mergePeople(target.developers,incoming.developers);
+ if(!target.released&&incoming.released)target.released=incoming.released;
+ if(!target.releaseStatus&&incoming.releaseStatus)target.releaseStatus=incoming.releaseStatus;
+ if(!target.background_image&&incoming.background_image)target.background_image=incoming.background_image;
+ if(!target.storeUrl&&incoming.storeUrl)target.storeUrl=incoming.storeUrl;
+ if(!target.rating&&incoming.rating)target.rating=incoming.rating;
+ const sources=[target.dataSource,incoming.dataSource].filter(Boolean);
+ if(sources.length)target.dataSource=[...new Set(sources)].join(" + ");
+}
+function updateMergedOnlineCard(game){
+ const box=document.getElementById("onlineResults");
+ const card=[...box.querySelectorAll("article[data-online-game-id]")].find(el=>el.dataset.onlineGameId===String(game.id));
+ if(!card)return;
+ const platformNode=card.querySelector(".js-online-platforms");
+ if(platformNode)platformNode.textContent="پلتفرم: "+onlinePlatformLabels(game).join("، ");
+ const linksNode=card.querySelector(".js-online-store-links");
+ if(linksNode)linksNode.innerHTML=gameStoreLinks(game).map(link=>'<a class="secondary" href="'+link.url+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;flex:1 1 auto;padding:9px 10px;border-radius:10px;text-decoration:none;color:inherit;text-align:center">'+link.label+' ↗</a>').join("");
+}
 function renderOnlineResults(results,append=false){
  results=(Array.isArray(results)?results:[]).filter(gameHasSupportedPlatform);
- if(!append)onlineRenderedNames=new Map();
- results=results.filter(g=>{
-  const key=normalizeGameName(g.name);
-  if(!key)return false;
-  const source=String(g.dataSource||(String(g.id||"").startsWith("steam_")?"STEAM":String(g.id||"").startsWith("gog_")?"GOG":String(g.id||"").startsWith("igdb_")?"IGDB":"RAWG")).toUpperCase();
-  const prior=onlineRenderedNames.get(key);
-  if(!prior){onlineRenderedNames.set(key,source);return true}
-  // Multiple distinct Steam AppIDs can legitimately share a title. Keep them,
-  // but avoid duplicating the same title when another provider also lists it.
-  if(source==="STEAM"&&prior==="STEAM")return true;
-  return false;
- });
  const box=document.getElementById("onlineResults");
- const html=results.map(g=>{
-  onlineCache.set(String(g.id),g);
-  const title=esc(g.name||"بازی بدون نام"),genre=esc((g.genres||[]).map(x=>x.name).join("، ")||"ژانر نامشخص");
-  const platforms=esc((g.platforms||[]).map(x=>x.platform&&x.platform.name).filter(Boolean).slice(0,4).join("، ")||"پلتفرم نامشخص");
+ if(!append){onlineRenderedNames=new Map();box.innerHTML=""}
+ const visible=[];
+ for(const game of results){
+  const id=String(game.id??"");
+  onlineCache.set(id,game);
+  const key=normalizeGameName(game.name);
+  if(!key)continue;
+  const source=String(game.dataSource||(id.startsWith("steam_")?"STEAM":id.startsWith("gog_")?"GOG":id.startsWith("igdb_")?"IGDB":"RAWG")).toUpperCase();
+  const prior=onlineRenderedNames.get(key);
+  if(!prior){
+   onlineRenderedNames.set(key,{source,game,steamIds:source==="STEAM"?new Set([id]):new Set()});
+   visible.push(game);
+   continue;
+  }
+  if(source==="STEAM"){
+   if(prior.steamIds.size){
+    if(!prior.steamIds.has(id)){prior.steamIds.add(id);visible.push(game)}
+    continue;
+   }
+   prior.steamIds.add(id);
+  }
+  mergeOnlineGameData(prior.game,game);
+  onlineCache.set(String(prior.game.id),prior.game);
+  updateMergedOnlineCard(prior.game);
+ }
+ const html=visible.map(g=>{
+  const title=esc(g.name||"بازی بدون نام");
+  const genre=esc((g.genres||[]).map(x=>x.name).join("، ")||"ژانر نامشخص");
+  const platforms=esc(onlinePlatformLabels(g).join("، ")||"پلتفرم نامشخص");
   const imageUrl=typeof g.background_image==="string"?g.background_image:"";
-  const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">':"";
-  const release=esc(g.released||"تاریخ انتشار نامشخص"),rating=Number.isFinite(Number(g.rating))&&g.rating?Number(g.rating).toFixed(1):"—";
+  const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\\'has-cover\\');this.parentElement.classList.add(\\'cover-missing\\')" style="width:100%;height:100%;object-fit:cover">':"";
+  const release=esc(g.released||"تاریخ انتشار نامشخص");
+  const rating=Number.isFinite(Number(g.rating))&&g.rating?Number(g.rating).toFixed(1):"—";
+  const today=new Date().toISOString().slice(0,10);
+  const releaseStatus=g.releaseStatus||(g.released?(g.released>today?"upcoming":"released"):"unknown");
+  const releaseLabel=releaseStatus==="upcoming"?"🗓 به‌زودی":releaseStatus==="released"?"✓ منتشر شده":"وضعیت انتشار نامشخص";
+  const releaseBadge='<span class="chip" data-release-status="'+esc(releaseStatus)+'">'+releaseLabel+'</span>';
   const storeLinksHtml=gameStoreLinks(g).map(link=>'<a class="secondary" href="'+link.url+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;flex:1 1 auto;padding:9px 10px;border-radius:10px;text-decoration:none;color:inherit;text-align:center">'+link.label+' ↗</a>').join("");
   const companies=[...(g.publishers||[]).map(x=>x.name),...(g.developers||[]).map(x=>x.name)].filter(Boolean);
-  const company=[...new Set(companies)].slice(0,2).join(' • ')||'اطلاعات شرکت سازنده/ناشر در منابع موجود ثبت نشده';
-  const sourceLabel=esc(g.dataSource||(g.officialUrl?'PlayStation Store':'RAWG'));
-  const companyInitial=esc((companies[0]||'🎮').slice(0,1).toUpperCase());
+  const company=[...new Set(companies)].slice(0,2).join(" • ")||"اطلاعات شرکت سازنده/ناشر در منابع موجود ثبت نشده";
+  const sourceLabel=esc(g.dataSource||(g.officialUrl?"PlayStation Store":"RAWG"));
+  const companyInitial=esc((companies[0]||"🎮").slice(0,1).toUpperCase());
   const saved=userGames.find(x=>String(x.rawgId||"")===String(g.id)||String(x.id)==="rawg_"+String(g.id)||normalizeGameName(x.title)===normalizeGameName(g.name||""));
   const addLabel=saved?(saved.owned?"✓ در کتابخانه":"✓ در بازی‌های من"):"＋ افزودن به بازی‌های من";
   const coverClass=imageUrl?"has-cover":"cover-missing";
-  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="font-size:11px;color:#80a8c9">منبع اطلاعات: '+sourceLabel+'</div><div class="meta" style="display:flex;align-items:center;gap:7px><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions" style="flex-wrap:wrap"><button onclick="addRawgGame(\''+esc(String(g.id))+'\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>' 
+  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="font-size:11px;color:#80a8c9">منبع اطلاعات: '+sourceLabel+'</div><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta js-online-platforms">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+' • '+releaseBadge+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions js-online-store-links" style="flex-wrap:wrap"><button onclick="addRawgGame(\\''+esc(String(g.id))+'\\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>';
  }).join("");
- if(!append)box.innerHTML="";
  box.insertAdjacentHTML("beforeend",html);
- document.getElementById("onlineMore").classList.toggle("hidden",!onlineNext&&!onlineLocalQueue.length);
- enrichOnlineCompanies(results);
-}
-async function enrichOnlineCompanies(results){
- const targets=(results||[]).filter(g=>!g.gamescopeOfficial&&!companyNames(g).length).slice(0,10);
- for(const game of targets){
-  try{
-   const detail=await rawgGameDetails(game.id), names=companyNames(detail);
-   if(!names.length)continue;
-   onlineCache.set(String(game.id),{...game,...detail});
-   const card=document.querySelector('[data-online-game-id="'+Number(game.id)+'"]');
-   if(card){
-    const label=card.querySelector("[data-company-label]"),initial=card.querySelector("[data-company-initial]");
-    if(label)label.textContent="شرکت: "+names.join(" • ");
-    if(initial)initial.textContent=names[0].trim().slice(0,1).toUpperCase();
-   }
-  }catch(e){/* Keep results usable if RAWG details are unavailable. */}
- }
+ const hasStoredMore=!onlineLastQuery&&typeof window.gamescopePublicCatalogHasMore==="function"&&window.gamescopePublicCatalogHasMore();
+ document.getElementById("onlineMore").classList.toggle("hidden",!onlineNext&&!onlineLocalQueue.length&&!hasStoredMore);
 }
 function normalizeGameName(value){
  return String(value||"").toLowerCase().normalize("NFD")
@@ -619,22 +671,8 @@ async function fetchRawgAbsolute(url){
  u.searchParams.forEach((value,key)=>{if(key!=="key")params[key]=value});
  return rawgFetch(path,params);
 }
-function cleanSearchIntent(query){
- let q=String(query||"").trim();
- // Only keep the upcoming-release filters for an explicit upcoming request.
- // Normal game searches must never inherit filters from the previous button click.
- const upcomingPattern=/(بازی.?های?\s*(آینده|جدید|در\s*راه)|هنوز\s*نیومده|منتشر\s*نشده|به\s*زودی|coming\s*soon|upcoming|pre.?order)/i;
- if(upcomingPattern.test(q)){
-  onlineUpcomingMode=true;
-  q=q.replace(/بازی.?های?\s*(آینده|جدید|در\s*راه)|هنوز\s*نیومده|منتشر\s*نشده|به\s*زودی|coming\s*soon|upcoming|pre.?order/ig,"").replace(/(برای\s*)?ps\s*5|پلی\s*استیشن\s*5/ig,"").trim();
- }else if(q){
-  onlineUpcomingMode=false;
- }
- return q;
-}
 async function loadOnlineGames({query="",append=false}={}){
  if(onlineBusy)return;
- if(!append)query=cleanSearchIntent(query);
  const originalQuery=String(query||"").trim();
  const canonical=canonicalKnownGameQuery(originalQuery);
  const isPhantomSearch=canonical==="Phantom Blade Zero";
@@ -664,11 +702,6 @@ async function loadOnlineGames({query="",append=false}={}){
    for(let i=0;i<variants.length;i++){
     const variant=variants[i],params={page:1,page_size:40,ordering:"-added"};
     if(canonical&&i===0)params.search_precise=true;
-    if(onlineUpcomingMode){
-     const now=new Date(),end=new Date(now);end.setFullYear(end.getFullYear()+3);
-     const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-     params.dates=iso(now)+","+iso(end);params.ordering="released";
-    }
     if(variant)params.search=variant;
     let data;
     try{data=await rawgFetch("/games",params)}
@@ -683,7 +716,7 @@ async function loadOnlineGames({query="",append=false}={}){
    }
    results=[...allResults.values()];
    reportedCount=Number(primaryData&&primaryData.count||results.length);
-   if(originalQuery&&!onlineUpcomingMode){
+   if(originalQuery){
     const scored=results.map(game=>({...game,__searchScore:scoreGameSearchResult(game.name,originalQuery,variants)}))
       .filter(game=>game.__searchScore<1000)
       .sort((a,b)=>a.__searchScore-b.__searchScore||(Number(b.added||0)-Number(a.added||0)));
@@ -710,7 +743,7 @@ async function loadOnlineGames({query="",append=false}={}){
    }else results=[officialPhantom];
    reportedCount=Math.max(1,reportedCount);
    onlineNextQueue=[];
-  }else if(originalQuery&&!append&&!onlineUpcomingMode){
+  }else if(originalQuery&&!append){
    // Do not fill search results with unrelated popular games when similarity is poor.
    results=results.slice(0,40);
   }
@@ -719,27 +752,19 @@ async function loadOnlineGames({query="",append=false}={}){
 
   if(!append&&typeof window.gamescopeFetchPublicCatalog==="function"){
    try{
-    let catalogGames=(await window.gamescopeFetchPublicCatalog()).map(siteCatalogRowToRawg).filter(Boolean);
-    if(onlineUpcomingMode)catalogGames=catalogGames.filter(g=>g.releaseStatus==="upcoming");
-    else if(originalQuery){
-     const variants=searchVariants(originalQuery);
-     catalogGames=catalogGames.filter(g=>scoreGameSearchResult(g.name,originalQuery,variants)<1000);
-    }
-    const seenNames=new Set(results.map(g=>normalizeGameName(g.name)));
-    const additions=catalogGames.filter(g=>{
-     const key=normalizeGameName(g.name);
-     if(!key||seenNames.has(key))return false;
-     seenNames.add(key);return true;
-    });
-    results=[...additions,...results];
-     if(results.length>40){onlineLocalQueue=results.slice(40);results=results.slice(0,40)}else onlineLocalQueue=[];
+    const storedRows=originalQuery&&typeof window.gamescopeSearchPublicCatalog==="function"
+      ? await window.gamescopeSearchPublicCatalog(canonical||originalQuery)
+      : await window.gamescopeFetchPublicCatalog();
+    const catalogGames=(storedRows||[]).map(siteCatalogRowToRawg).filter(Boolean);
+    results=[...catalogGames,...results];
+    if(results.length>40){onlineLocalQueue=results.slice(40);results=results.slice(0,40)}else onlineLocalQueue=[];
    }catch(catalogError){console.warn("Public catalog merge failed:",catalogError)}
   }
   onlineNext=onlineNextQueue.length>0?onlineNextQueue[0]:null;
   renderOnlineResults(results,append);
   const total=results.length.toLocaleString("fa-IR");
   const correction=isPhantomSearch?" نام جست‌وجو به «Phantom Blade Zero» اصلاح شد؛ عنوان رسمی در PlayStation تأیید شده است. ":"";
-  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ PlayStation، PC و Xbox در RAWG • ":"")+
+  setOnlineStatus(
    (originalQuery?"نتایج جست‌وجو برای «"+originalQuery+"». "+correction:"")+
    (originalQuery?"":"PlayStation، PC و Xbox • ")+
    "نتایج مرتبط پس از فیلتر نام و پلتفرم: "+total);
@@ -753,9 +778,10 @@ async function loadOnlineGames({query="",append=false}={}){
   let cachedCatalog=[];
   try{
    if(typeof window.gamescopeFetchPublicCatalog==="function"){
-    cachedCatalog=(await window.gamescopeFetchPublicCatalog(true)).map(siteCatalogRowToRawg).filter(Boolean);
-    if(onlineUpcomingMode)cachedCatalog=cachedCatalog.filter(g=>g.releaseStatus==="upcoming");
-    else if(originalQuery){
+    cachedCatalog=(originalQuery&&typeof window.gamescopeSearchPublicCatalog==="function"
+      ? await window.gamescopeSearchPublicCatalog(canonical||originalQuery)
+      : await window.gamescopeFetchPublicCatalog(true)).map(siteCatalogRowToRawg).filter(Boolean);
+    if(originalQuery){
      const variants=searchVariants(originalQuery);
      cachedCatalog=cachedCatalog.filter(g=>scoreGameSearchResult(g.name,originalQuery,variants)<1000);
     }
@@ -785,8 +811,7 @@ window.gamescopeSearchOnlineFromMain=function(){
 };
 document.getElementById("onlineSearchBtn").addEventListener("click",()=>loadOnlineGames({query:document.getElementById("onlineSearch").value.trim()}));
 document.getElementById("onlineSearch").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();loadOnlineGames({query:document.getElementById("onlineSearch").value.trim()})}});
-document.getElementById("onlineBrowseBtn").addEventListener("click",()=>{onlineUpcomingMode=false;document.getElementById("onlineSearch").value="";loadOnlineGames({query:""})});
-document.getElementById("onlineUpcomingBtn").addEventListener("click",()=>{onlineUpcomingMode=true;document.getElementById("onlineSearch").value="";loadOnlineGames({query:""})});
+document.getElementById("onlineBrowseBtn").addEventListener("click",()=>{document.getElementById("onlineSearch").value="";loadOnlineGames({query:""})});
 
 const UPDATE_SNAPSHOT_KEY="sadra_ps5_update_snapshot_v1";
 function setUpdateProgress(percent,label){
@@ -894,7 +919,30 @@ document.addEventListener("visibilitychange",()=>refreshOnlineCatalogIfNeeded(fa
 // Public online listings refresh every five minutes while the page is open.
 setInterval(()=>refreshOnlineCatalogIfNeeded(true),5*60*1000);
 document.getElementById("onlineSearch").addEventListener("keydown",e=>{if(e.key==="Enter")loadOnlineGames({query:e.target.value.trim()})});
-document.getElementById("onlineMore").addEventListener("click",()=>{if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true});else if(onlineLocalQueue.length){const batch=onlineLocalQueue.splice(0,40);renderOnlineResults(batch,true)}});
+async function loadNextStoredCatalogPage(){
+ if(onlineBusy)return;
+ const button=document.getElementById("onlineMore");
+ onlineBusy=true;button.disabled=true;setOnlineStatus("در حال دریافت صفحهٔ بعدی کاتالوگ…");
+ try{
+  const rows=await window.gamescopeFetchNextPublicCatalogPage();
+  const games=rows.map(siteCatalogRowToRawg).filter(Boolean);
+  onlineLocalQueue.push(...games);
+  if(onlineLocalQueue.length){
+   const batch=onlineLocalQueue.splice(0,40);
+   renderOnlineResults(batch,true);
+   setOnlineStatus("بازی‌های بیشتری از کاتالوگ عمومی بارگیری شدند.");
+  }else{
+   setOnlineStatus("به انتهای فهرست فعلی کاتالوگ رسیدی.");
+   button.classList.add("hidden");
+  }
+ }catch(error){setOnlineStatus("بارگیری صفحهٔ بعدی ناموفق بود: "+(error?.message||"خطای شبکه"))}
+ finally{onlineBusy=false;button.disabled=false}
+}
+document.getElementById("onlineMore").addEventListener("click",()=>{
+ if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true});
+ else if(onlineLocalQueue.length){const batch=onlineLocalQueue.splice(0,40);renderOnlineResults(batch,true)}
+ else if(!onlineLastQuery&&window.gamescopePublicCatalogHasMore?.())loadNextStoredCatalogPage();
+});
 document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFullUpdate());
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
 
@@ -1119,7 +1167,17 @@ render();
   window.__gamescopePublicCatalogLoadedAt=Date.now();
   render();renderAdminList();return true;
  }
- window.gamescopeFetchPublicCatalog=async function(force=false){
+ const PUBLIC_CATALOG_PAGE_SIZE=160;
+ let publicCatalogFirstPage=null,publicCatalogFirstPageAt=0,publicCatalogNextOffset=0,publicCatalogHasMore=true,publicCatalogPageBusy=false;
+ async function fetchVisibleCatalogPage(offset,limit,searchTerm=""){
+  let query=client.from("site_catalog")
+   .select("id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,updated_at")
+   .eq("is_hidden",false)
+   .order("updated_at",{ascending:false})
+   .order("id",{ascending:true})
+   .range(offset,offset+limit-1);
+  if(searchTerm){
+   const safeTerm=String(searchTerm).replace(/[\\\\%_]/g,"\\\\ window.gamescopeFetchPublicCatalog=async function(force=false){
   const cached=window.__gamescopePublicCatalogRows;
   const loadedAt=Number(window.__gamescopePublicCatalogLoadedAt||0);
   if(!force&&Array.isArray(cached)&&Date.now()-loadedAt<5*60*1000)return cached;
@@ -1127,7 +1185,45 @@ render();
   window.__gamescopePublicCatalogRows=data.filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
   window.__gamescopePublicCatalogLoadedAt=Date.now();
   return window.__gamescopePublicCatalogRows;
+ };");
+   query=client.from("site_catalog")
+    .select("id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,updated_at")
+    .eq("is_hidden",false)
+    .ilike("title","%"+safeTerm+"%")
+    .order("title",{ascending:true})
+    .order("id",{ascending:true})
+    .range(offset,offset+limit-1);
+  }
+  const {data,error}=await query;
+  if(error)throw error;
+  return (Array.isArray(data)?data:[]).filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
+ }
+ window.gamescopeFetchPublicCatalog=async function(force=false,searchTerm=""){
+  if(searchTerm)return fetchVisibleCatalogPage(0,120,searchTerm);
+  if(force||!Array.isArray(publicCatalogFirstPage)||Date.now()-publicCatalogFirstPageAt>5*60*1000){
+   publicCatalogFirstPage=await fetchVisibleCatalogPage(0,PUBLIC_CATALOG_PAGE_SIZE);
+   publicCatalogFirstPageAt=Date.now();
+   publicCatalogNextOffset=PUBLIC_CATALOG_PAGE_SIZE;
+   publicCatalogHasMore=publicCatalogFirstPage.length===PUBLIC_CATALOG_PAGE_SIZE;
+  }
+  window.__gamescopePublicCatalogRows=publicCatalogFirstPage;
+  window.__gamescopePublicCatalogLoadedAt=publicCatalogFirstPageAt;
+  return publicCatalogFirstPage;
  };
+ window.gamescopeSearchPublicCatalog=async function(searchTerm){
+  return fetchVisibleCatalogPage(0,120,String(searchTerm||"").trim());
+ };
+ window.gamescopeFetchNextPublicCatalogPage=async function(){
+  if(publicCatalogPageBusy||!publicCatalogHasMore)return [];
+  publicCatalogPageBusy=true;
+  try{
+   const page=await fetchVisibleCatalogPage(publicCatalogNextOffset,PUBLIC_CATALOG_PAGE_SIZE);
+   publicCatalogNextOffset+=PUBLIC_CATALOG_PAGE_SIZE;
+   publicCatalogHasMore=page.length===PUBLIC_CATALOG_PAGE_SIZE;
+   return page;
+  }finally{publicCatalogPageBusy=false}
+ };
+ window.gamescopePublicCatalogHasMore=()=>publicCatalogHasMore;
  window.gamescopePublishRawgResults=async function(futureGames,recentGames){
   if(!currentUser||!isOwner)return {published:false,added:0,updated:0,items:[]};
   let existingRows;
@@ -1447,7 +1543,7 @@ render();
  $("gsSettingsOpenAccount").addEventListener("click",()=>{closeGsSettings();$("openPsnAccount").click()});
  client.auth.onAuthStateChange((event,session)=>{if(event==="PASSWORD_RECOVERY")openPasswordRecovery();if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
- loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeLoadLatestUpdateReport)window.gamescopeLoadLatestUpdateReport();},5*60*1000);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")window.gamescopeLoadLatestUpdateReport?.()});paintResendCooldown();
+ loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeLoadLatestUpdateReport)window.gamescopeLoadLatestUpdateReport();},5*60*1000);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")window.gamescopeLoadLatestUpdateReport?.()});paintResendCooldown();
  const callbackParams=new URLSearchParams(window.location.search),callbackHashParams=new URLSearchParams(window.location.hash.replace(/^#/,""));
  if(callbackHashParams.get("type")==="recovery"||callbackParams.get("type")==="recovery")setTimeout(openPasswordRecovery,0);const callbackError=callbackParams.get("error_description")||callbackParams.get("error")||callbackHashParams.get("error_description")||callbackHashParams.get("error");
  if(callbackError){
