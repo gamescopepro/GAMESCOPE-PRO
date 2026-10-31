@@ -88,6 +88,19 @@ function companyNames(game: RawgGame | null | undefined): string[] {
   return [...new Set(names)].slice(0, 2);
 }
 
+function isSupportedPlatformName(value: unknown): boolean {
+  const name = String(value ?? "").trim().toLowerCase().replace(/\\s+/g, " ");
+  if (["pc", "windows", "microsoft windows", "linux", "macos", "mac os", "steam deck"].includes(name)) return true;
+  if (/^(playstation(?:\\s|$)|ps\\s?(?:1|2|3|4|5)\\b|psp\\b|ps vita\\b)/i.test(name)) return true;
+  return /^xbox(?:\\s|$)/i.test(name);
+}
+
+function gameHasSupportedPlatform(game: RawgGame): boolean {
+  return Array.isArray(game.platforms) && game.platforms.some((item) =>
+    isSupportedPlatformName(item?.platform?.name)
+  );
+}
+
 function dateString(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -221,8 +234,8 @@ Deno.serve(async (req: Request) => {
     fetchCategory(apiKey, dateString(recentStart), dateString(now), "-released"),
   ]);
 
-  const futureGames = futureResult.games;
-  const recentGames = recentResult.games;
+  const futureGames = futureResult.games.filter(gameHasSupportedPlatform);
+  const recentGames = recentResult.games.filter(gameHasSupportedPlatform);
   const candidates = new Map<string, RawgGame>();
   for (const game of futureGames) candidates.set(String(game.id), game);
   for (const game of recentGames) candidates.set(String(game.id), game);
@@ -345,7 +358,7 @@ Deno.serve(async (req: Request) => {
     const note =
       "همگام‌سازی مستقل سرور انجام شد: " +
       futureGames.length + " بازی آینده و " + recentGames.length +
-      " بازی منتشرشدهٔ اخیر از RAWG برای همهٔ پلتفرم‌ها دریافت شد (حداکثر ۵ صفحه برای هر دسته). " +
+      " بازی منتشرشدهٔ اخیر از RAWG با فیلتر PlayStation، PC و Xbox دریافت شد (حداکثر ۵ صفحه برای هر دسته). " +
       added + " بازی جدید و " + updated + " بازی به‌روزرسانی شد. " +
       "این بررسی پوشش کامل همهٔ بازی‌های دنیا یا تمام فروشگاه‌ها را تضمین نمی‌کند." + errorText;
 
