@@ -352,10 +352,21 @@ async function rawgGameDetails(id){
 function companyNames(g){
  return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
 }
+function isSupportedPlatformName(value){
+ const name=String(value||"").trim().toLowerCase().replace(/\\s+/g," ");
+ if(["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name))return true;
+ if(/^(playstation(?:\\s|$)|ps\\s?(?:1|2|3|4|5)\\b|psp\\b|ps vita\\b)/i.test(name))return true;
+ if(/^xbox(?:\\s|$)/i.test(name))return true;
+ return false;
+}
+function gameHasSupportedPlatform(game){
+ return Array.isArray(game?.platforms)&&game.platforms.some(item=>isSupportedPlatformName(item?.platform?.name||item?.name||""));
+}
 function siteCatalogRowToRawg(row){
  const match=/^rawg_([0-9]+)$/.exec(String(row?.id||""));
  if(!match||!String(row?.title||"").trim())return null;
  const platformNames=String(row.platforms||"").split(/[،,]/).map(x=>x.trim()).filter(Boolean);
+ if(!platformNames.some(isSupportedPlatformName))return null;
  const publisherNames=String(row.publisher||"").split(" • ").map(x=>x.trim()).filter(Boolean);
  const critic=row.critic===null||row.critic===undefined?null:Number(row.critic);
  return {
@@ -387,6 +398,7 @@ function addRawgGame(id){
  }
 }
 function renderOnlineResults(results,append=false){
+ results=(Array.isArray(results)?results:[]).filter(gameHasSupportedPlatform);
  const box=document.getElementById("onlineResults");
  const html=results.map(g=>{
   onlineCache.set(String(g.id),g);
@@ -660,6 +672,8 @@ async function loadOnlineGames({query="",append=false}={}){
    results=results.slice(0,40);
   }
 
+  results=results.filter(gameHasSupportedPlatform);
+
   if(!append&&typeof window.gamescopeFetchPublicCatalog==="function"){
    try{
     let catalogGames=(await window.gamescopeFetchPublicCatalog()).map(siteCatalogRowToRawg).filter(Boolean);
@@ -681,7 +695,7 @@ async function loadOnlineGames({query="",append=false}={}){
   renderOnlineResults(results,append);
   const total=reportedCount.toLocaleString("fa-IR");
   const correction=isPhantomSearch?" نام جست‌وجو به «Phantom Blade Zero» اصلاح شد؛ عنوان رسمی در PlayStation تأیید شده است. ":"";
-  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ همهٔ پلتفرم‌ها در RAWG • ":"")+
+  setOnlineStatus((onlineUpcomingMode?"بازی‌های آیندهٔ PlayStation، PC و Xbox در RAWG • ":"")+
    (originalQuery?"نتایج جست‌وجو برای «"+originalQuery+"». "+correction:"")+
    (originalQuery?"":"همهٔ پلتفرم‌ها • ")+
    "تعداد گزارش‌شده توسط RAWG: "+total+" • بازی‌های نمایش‌داده‌شده: "+results.length.toLocaleString("fa-IR"));
@@ -771,12 +785,14 @@ async function runFullUpdate({silent=false}={}){
     }
     return items;
   }
-  futureGames=await fetchCategoryPages({dates:dateOnly(now)+","+dateOnly(future),ordering:"released"},12,43,"دریافت بازی‌های آیندهٔ همهٔ پلتفرم‌ها");
+  futureGames=await fetchCategoryPages({dates:dateOnly(now)+","+dateOnly(future),ordering:"released"},12,43,"دریافت بازی‌های آیندهٔ PlayStation، PC و Xbox");
   setUpdateProgress(48,"۴۸٪ — بررسی بازی‌های منتشرشدهٔ اخیر");
   recentGames=await fetchCategoryPages({dates:dateOnly(recentStart)+","+dateOnly(now),ordering:"-released"},50,77,"دریافت بازی‌های منتشرشدهٔ اخیر");
   // حذف تکراری‌ها در صورت تکرار یک عنوان بین صفحات.
   futureGames=[...new Map(futureGames.map(g=>[String(g.id),g])).values()];
   recentGames=[...new Map(recentGames.map(g=>[String(g.id),g])).values()];
+  futureGames=futureGames.filter(gameHasSupportedPlatform);
+  recentGames=recentGames.filter(gameHasSupportedPlatform);
   setUpdateProgress(78,"۷۸٪ — مقایسهٔ نتایج دریافت‌شده با بررسی قبلی");
   const currentFuture=futureGames.map(g=>String(g.id));
   const currentRecent=recentGames.map(g=>String(g.id));
@@ -803,7 +819,7 @@ async function runFullUpdate({silent=false}={}){
   onlineUpcomingMode=true;
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults(futureGames,false);
-  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG برای همهٔ پلتفرم‌ها دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه و ذخیره شدند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ بازی‌های دنیا یا همهٔ فروشگاه‌ها را تضمین نمی‌کند.";
+  let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG با فیلتر PlayStation، PC و Xbox دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه و ذخیره شدند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ بازی‌های دنیا یا همهٔ فروشگاه‌ها را تضمین نمی‌کند.";
   if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
   else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
   else note+=" این بررسی فقط فهرست آنلاین را تازه کرد؛ انتشار تغییرات سراسری فقط با ورود مالک انجام می‌شود.";
