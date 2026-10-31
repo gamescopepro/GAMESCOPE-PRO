@@ -631,12 +631,15 @@ async function loadOnlineGames({query="",append=false}={}){
    onlinePage++;
   }else{
    onlinePage=1;onlineNextQueue=[];onlineLastQuery=originalQuery;
-   const variants=searchVariants(originalQuery);
+   const variants=canonical
+    ? [canonical,...searchVariants(originalQuery).filter(v=>normalizeGameName(v)!==normalizeGameName(canonical))].slice(0,6)
+    : searchVariants(originalQuery);
    const allResults=new Map();let primaryData=null;
-   // Use RAWG's fuzzy default on the original spelling, then also search corrected aliases.
-   // search_precise=true is intentionally omitted: it was excluding misspelled user queries.
+   // For known aliases (e.g. FC27), search the canonical title precisely first.
+   // Remaining variants still provide typo-tolerant fallback when an exact query is empty.
    for(let i=0;i<variants.length;i++){
     const variant=variants[i],params={page:1,page_size:40,ordering:"-added"};
+    if(canonical&&i===0)params.search_precise=true;
     if(onlineUpcomingMode){
      const now=new Date(),end=new Date(now);end.setFullYear(end.getFullYear()+3);
      const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
