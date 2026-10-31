@@ -1175,12 +1175,10 @@ render();
    .eq("is_hidden",false);
   if(searchTerm){
    const safeTerm=String(searchTerm).replace(/[%_]/g," ");
-   query=query.ilike("title","%"+safeTerm+"%")
-    .order("title",{ascending:true})
-    .order("id",{ascending:true});
-  }else{
-   query=query.order("updated_at",{ascending:false}).order("id",{ascending:true});
+   query=query.ilike("title","%"+safeTerm+"%");
   }
+  // The primary-key order uses the existing index and keeps paged reads stable.
+  query=query.order("id",{ascending:true});
   const {data,error}=await query.range(offset,offset+limit-1);
   if(error)throw error;
   return (Array.isArray(data)?data:[]).filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
