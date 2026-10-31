@@ -273,15 +273,16 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 <main class="wrap">
 <div class="toolbar"><div class="search"><input id="search" placeholder="🔎 جست‌وجوی بازی‌ها..." autocomplete="off"></div><button id="addToggle">＋ افزودن بازی</button><button class="secondary" id="exportBtn">خروجی پشتیبان</button><button class="secondary" id="importBtn">ورود پشتیبان</button><input id="importFile" type="file" accept=".json,application/json" class="hidden"></div>
 <div class="panel" id="onlinePanel">
-  <div class="section-title"><h3>🌐 کاتالوگ آنلاین بازی‌ها</h3><span class="hint">اطلاعات از RAWG</span></div>
-  <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ آنلاین فقط بازی‌های PlayStation، PC و Xbox را نمایش می‌دهد و هنگام بازبودن سایت هر ۵ دقیقه تازه می‌شود. همگام‌سازی کاتالوگ عمومی و گزارش تغییرات هر ۱۵ دقیقه به‌صورت مستقل روی سرور Supabase اجرا می‌شود؛ حتی وقتی سایت بسته است و هیچ‌کس وارد حساب نشده است. اتصال RAWG از سرور مرکزی GAMESCOPE انجام می‌شود؛ کلید API در کد سایت یا مرورگر بازدیدکنندگان قرار نمی‌گیرد و کاربران برای جست‌وجو به کلید شخصی نیاز ندارند. پوشش و دقت نتایج به داده‌های منبع بستگی دارد.</p>
+  <div class="section-title"><h3>🌐 کاتالوگ آنلاین بازی‌ها</h3><span class="hint">RAWG • Steam • GOG • IGDB (در صورت اتصال)</span></div>
+  <p style="color:#b7c9e0;font-size:12px;line-height:1.9;margin-top:0">کاتالوگ بازی‌های PlayStation، PC و Xbox از چند منبع تکمیل می‌شود. فهرست آنلاین هنگام بازبودن سایت هر ۵ دقیقه تازه می‌شود و همگام‌سازی عمومی سرور هر ۱۵ دقیقه اجرا می‌شود؛ حتی وقتی سایت بسته است. RAWG منبع اطلاعات چندپلتفرمی است؛ Steam از SteamSpy و فهرست‌های فروشگاه Steam کشف می‌شود و GOG نیز به‌صورت منبع تکمیلی بررسی می‌شود. IGDB با افزودن کلیدهای مخصوص در Secrets سرور فعال می‌شود. کلیدهای API هرگز در مرورگر نمایش داده نمی‌شوند. هیچ منبعی پوشش صددرصدی همهٔ بازی‌ها را تضمین نمی‌کند.</p>
   <div class="formgrid">
     <div class="field full"><label for="onlineSearch">جست‌وجوی آنلاین بازی (نام دقیق یا کوتاه)</label><input id="onlineSearch" placeholder="نام هر بازی؛ حتی بازی‌های پلتفرم‌های دیگر"></div>
     <div class="field"><button id="onlineSearchBtn">🔎 جست‌وجو</button></div>
     <div class="field"><button class="secondary" id="onlineBrowseBtn">نمایش همه بازی‌ها</button></div>
     <div class="field full"><button id="onlineUpcomingBtn">🗓️ بازی‌های آیندهٔ PlayStation، PC و Xbox</button></div>
+    <div class="field full"><button id="onlineRefreshBtn" class="secondary" type="button">🔄 بررسی فوری منابع و تازه‌سازی</button></div>
   </div>
-  <p class="hint">منبع داده: <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">RAWG API</a>. برای استفاده رایگان، شرایط انتساب منبع و محدودیت درخواست‌ها را رعایت کن.</p>
+  <p class="hint">منابع: <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">RAWG</a> · <a href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">Steam Store</a> و <a href="https://steamspy.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">SteamSpy</a> · <a href="https://www.gog.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">GOG</a> · <a href="https://api-docs.igdb.com/" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">IGDB</a> (فعال‌سازی با اعتبارنامهٔ امن لازم است). شرایط استفاده و انتساب هر منبع رعایت می‌شود.</p>
   <div id="onlineStatus" class="hint" role="status" aria-live="polite" style="margin-top:8px"></div>
   <div id="updateProgressWrap" class="hidden" style="margin-top:12px;padding:12px;border:1px solid #24486a;border-radius:12px;background:#0b1b2d">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12px;margin-bottom:8px"><b id="updateProgressLabel">آماده‌سازی به‌روزرسانی…</b><b id="updateProgressPct">۰٪</b></div>
@@ -300,7 +301,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 <div class="toolbar"><select id="sort" style="max-width:210px"><option value="name">مرتب‌سازی: نام بازی</option><option value="rating">بالاترین امتیاز من</option><option value="recent">تازه‌اضافه‌شده‌ها</option></select><select id="genreFilter" style="max-width:210px"><option value="all">همه ژانرها</option></select></div>
 <div id="games" class="grid"></div>
 <div class="panel"><div class="section-title"><h3>🧑‍🚀 پروفایل گیمر</h3><span class="hint">آمار کتابخانهٔ شخصی</span></div><p id="profileText" style="line-height:1.9;color:#b7c9e0;font-size:13px;margin:0"></p></div>
-<div class="footer">GAMESCOPE PRO • کاتالوگ جهانی بازی‌های ویدیویی با داده‌های RAWG • پوشش و دقت اطلاعات به منبع داده بستگی دارد. این پروژه مستقل است و به حساب PSN متصل نمی‌شود. <a href="about/" style="color:#38d7ff">درباره پروژه</a> · <a href="faq/" style="color:#38d7ff">پرسش‌های متداول</a> · <a href="data-sources/" style="color:#38d7ff">منابع داده و به‌روزرسانی</a> · <a href="https://github.com/gamescopepro/GAMESCOPE-PRO/issues" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">گزارش مشکل</a></div>
+<div class="footer">GAMESCOPE PRO • کاتالوگ جهانی بازی‌های ویدیویی با داده‌های چندمنبعی • پوشش و دقت اطلاعات به منابع داده بستگی دارد. این پروژه مستقل است و به حساب PSN متصل نمی‌شود. <a href="about/" style="color:#38d7ff">درباره پروژه</a> · <a href="faq/" style="color:#38d7ff">پرسش‌های متداول</a> · <a href="data-sources/" style="color:#38d7ff">منابع داده و به‌روزرسانی</a> · <a href="https://github.com/gamescopepro/GAMESCOPE-PRO/issues" target="_blank" rel="noopener noreferrer" style="color:#38d7ff">گزارش مشکل</a></div>
 </main>
 <script>
 const KEY="sadra_pshub_v1";
@@ -369,12 +370,13 @@ function gameStoreLinks(game){
  if(names.some(name=>/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name)))links.push({label:"PlayStation Store",url:"https://store.playstation.com/en-us/search/"+title});
  const directSteam=String(game?.storeUrl||"");
  if(/^https:\/\/store\.steampowered\.com\/app\/[0-9]+\/?(?:\?.*)?$/i.test(directSteam))links.push({label:"Steam Store",url:directSteam});
+ if(/^https:\/\/(?:www\.)?gog\.com\/game\//i.test(directSteam))links.push({label:"GOG Store",url:directSteam});
  else if(names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name)))links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
  if(names.some(name=>/^xbox(?:\s|$)/i.test(name)))links.push({label:"Xbox Store",url:"https://www.xbox.com/en-US/search?q="+title});
  return links;
 }
 function siteCatalogRowToRawg(row){
- const match=/^(rawg|steam)_([0-9]+)$/.exec(String(row?.id||""));
+ const match=/^(rawg|steam|gog|igdb)_([0-9]+)$/.exec(String(row?.id||""));
  if(!match||!String(row?.title||"").trim())return null;
  const source=match[1],sourceId=match[2];
  const platformNames=String(row.platforms||"").split(/[،,]/).map(x=>x.trim()).filter(Boolean);
@@ -382,15 +384,15 @@ function siteCatalogRowToRawg(row){
  const publisherNames=String(row.publisher||"").split(" • ").map(x=>x.trim()).filter(Boolean);
  const critic=row.critic===null||row.critic===undefined?null:Number(row.critic);
  const isSteam=source==="steam";
- const slug=(isSteam?"steam-":"rawg-")+sourceId+"-"+String(row.title).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+ const slug=source+"-"+sourceId+"-"+String(row.title).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
  return {
   id:isSteam?String(row.id):Number(sourceId),name:String(row.title),slug,released:row.release_date||"",
   rating:Number.isFinite(critic)?critic/2:null,metacritic:Number.isFinite(critic)?critic*10:null,
   background_image:"",genres:row.genre?[{name:String(row.genre)}]:[],
   platforms:platformNames.map(name=>({platform:{name}})),
   publishers:publisherNames.map(name=>({name})),developers:[],
-  storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":"https://store.playstation.com/en-us/search/"+encodeURIComponent(String(row.title))),
-  gamescopeCatalog:true,gamescopeOfficial:isSteam,releaseStatus:row.release_status||"unknown"
+  storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":source==="gog"?"https://www.gog.com/":"https://store.playstation.com/en-us/search/"+encodeURIComponent(String(row.title))),
+  gamescopeCatalog:true,gamescopeOfficial:source!=="rawg",dataSource:source.toUpperCase(),releaseStatus:row.release_status||"unknown"
  };
 }
 function rawgGameObject(g){
@@ -864,6 +866,7 @@ document.addEventListener("visibilitychange",()=>refreshOnlineCatalogIfNeeded(fa
 setInterval(()=>refreshOnlineCatalogIfNeeded(true),5*60*1000);
 document.getElementById("onlineSearch").addEventListener("keydown",e=>{if(e.key==="Enter")loadOnlineGames({query:e.target.value.trim()})});
 document.getElementById("onlineMore").addEventListener("click",()=>{if(onlineNext)loadOnlineGames({query:onlineLastQuery,append:true})});
+document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFullUpdate());
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
 
 function gameCoverMarkup(g){
@@ -1012,7 +1015,7 @@ render();
 
 <script>
 (function(){
- const SITE_URL="https://sadraps595-gif.github.io/Sadra-PlayStation-Hub/";
+ const SITE_URL="https://gamescopepro.github.io/GAMESCOPE-PRO/";
  const client=window.supabase.createClient("https://axwjiwpwqoykvcbumixy.supabase.co","sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-");
  const $=id=>document.getElementById(id), say=t=>{$("gsAuthMessage").textContent=t};
  let currentUser=null, syncing=false, isOwner=false;
@@ -1020,11 +1023,11 @@ render();
  function paintResendCooldown(){
   if(resendCooldownTimer)clearTimeout(resendCooldownTimer);
   const btn=$("gsResendConfirmation");if(!btn)return;
-  const seconds=Math.ceil((Number(localStorage.getItem(RESEND_COOLDOWN_KEY)||0)-Date.now())/1000);
+  let seconds=0;try{seconds=Math.ceil((Number(localStorage.getItem(RESEND_COOLDOWN_KEY)||0)-Date.now())/1000)}catch(e){}
   if(seconds>0){btn.disabled=true;btn.textContent="ارسال دوباره پس از "+seconds.toLocaleString("fa-IR")+" ثانیه";resendCooldownTimer=setTimeout(paintResendCooldown,1000);}
   else{btn.disabled=false;btn.textContent="📩 ارسال دوباره ایمیل تأیید";}
  }
- function startResendCooldown(seconds){localStorage.setItem(RESEND_COOLDOWN_KEY,String(Date.now()+seconds*1000));paintResendCooldown();}
+ function startResendCooldown(seconds){try{localStorage.setItem(RESEND_COOLDOWN_KEY,String(Date.now()+seconds*1000))}catch(e){}paintResendCooldown();}
  function setOwnerUI(value){
   isOwner=!!value;window.gamescopeOwnerAuthenticated=isOwner;
   $("gsOwnerMenuWrap").classList.toggle("hidden",!isOwner);
@@ -1328,12 +1331,12 @@ render();
  client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
  loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeLoadLatestUpdateReport)window.gamescopeLoadLatestUpdateReport();},5*60*1000);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")window.gamescopeLoadLatestUpdateReport?.()});paintResendCooldown();
- const callbackParams=new URLSearchParams(window.location.search);const callbackError=callbackParams.get("error_description")||callbackParams.get("error");
+ const callbackParams=new URLSearchParams(window.location.search),callbackHashParams=new URLSearchParams(window.location.hash.replace(/^#/,""));const callbackError=callbackParams.get("error_description")||callbackParams.get("error")||callbackHashParams.get("error_description")||callbackHashParams.get("error");
  if(callbackError){
   $("gsResendConfirmation").classList.remove("hidden");
   const e=String(callbackError).replace(/\+/g," ");
   const message=/provider is not enabled|provider_not_enabled/i.test(e)?"ورود با گوگل هنوز برای این پروژه فعال نیست. در Supabase وارد Authentication → Sign In / Providers شو، Google را فعال کن و Client ID و Client Secret را ثبت کن.":/redirect.*not allowed|redirect.*url/i.test(e)?"آدرس بازگشت اجازه داده نشده است. Redirect URLs را در Supabase بررسی کن.":"ورود کامل نشد: "+e;
-  setTimeout(()=>{const open=$("openPsnAccount");if(open)open.click();say(message);},120);
+  const cleanUrl=new URL(window.location.href);["error","error_description","error_code"].forEach(key=>{cleanUrl.searchParams.delete(key);callbackHashParams.delete(key)});cleanUrl.hash=callbackHashParams.toString();window.history.replaceState({},document.title,cleanUrl.toString());setTimeout(()=>{const open=$("openPsnAccount");if(open)open.click();say(message);},120);
 }
 
 
