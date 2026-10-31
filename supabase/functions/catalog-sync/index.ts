@@ -4,6 +4,7 @@ const PROJECT_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const RAWG_BASE = "https://api.rawg.io/api";
 const PAGE_SIZE = 40;
 const MAX_PAGES_PER_CATEGORY = 5;
+const MAX_PLATFORM_PAGES_PER_RUN = 4;
 const DETAIL_LOOKUPS_PER_RUN = 10;
 const MAX_REPORT_ITEMS = 30;
 
@@ -101,6 +102,49 @@ function gameHasSupportedPlatform(game: RawgGame): boolean {
   );
 }
 
+function canonicalPlatformLabel(value: unknown): string | null {
+  const name = String(value ?? "").trim();
+  const lower = name.toLowerCase().replace(/\\s+/g, " ");
+  if (!name) return null;
+  if (["pc", "windows", "microsoft windows", "linux", "macos", "mac os", "steam deck"].includes(lower)) return "PC";
+  if (/^(playstation\\s*5|ps\\s*5)\\b/i.test(name)) return "PlayStation 5";
+  if (/^(playstation\\s*4|ps\\s*4)\\b/i.test(name)) return "PlayStation 4";
+  if (/^(playstation\\s*3|ps\\s*3)\\b/i.test(name)) return "PlayStation 3";
+  if (/^(playstation\\s*2|ps\\s*2)\\b/i.test(name)) return "PlayStation 2";
+  if (/^playstation\\s*1\\b|^ps\\s*1\\b/i.test(name)) return "PlayStation";
+  if (/^playstation vita$|^ps vita$/i.test(name)) return "PlayStation Vita";
+  if (/^psp\\b/i.test(name)) return "PSP";
+  if (/^playstation(?:\\s|$)/i.test(name)) return name;
+  if (/^xbox.*series|^series.*xbox/i.test(name)) return "Xbox Series X|S";
+  if (/^xbox.*one|^one.*xbox/i.test(name)) return "Xbox One";
+  if (/^xbox.*360|^xbox 360/i.test(name)) return "Xbox 360";
+  if (/^xbox(?:\\s|$)/i.test(name)) return "Xbox";
+  return null;
+}
+
+function supportedPlatformNames(game: RawgGame): string[] {
+  if (!Array.isArray(game.platforms)) return [];
+  const labels = game.platforms
+    .map((item) => canonicalPlatformLabel(item?.platform?.name))
+    .filter((value): value is string => Boolean(value));
+  return [...new Map(labels.map((label) => [label.toLowerCase(), label])).values()];
+}
+
+function mergePlatformLabels(...values: Array<string | null | undefined>): string {
+  const labels = values
+    .flatMap((value) => String(value ?? "").split(/[،,]/))
+    .map((value) => canonicalPlatformLabel(value) ?? value.trim())
+    .filter(Boolean);
+  return [...new Map(labels.map((label) => [label.toLowerCase(), label])).values()].join("، ");
+}
+
+function defaultStoreUrl(title: string, platforms: string): string {
+  const query = encodeURIComponent(title);
+  if (/playstation/i.test(platforms)) return "https://store.playstation.com/en-us/search/" + query;
+  if (/xbox/i.test(platforms)) return "https://www.xbox.com/en-US/search?q=" + query;
+  return "https://store.steampowered.com/search/?term=" + query;
+}
+
 function dateString(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -129,26 +173,33 @@ async function fetchJson(url: string, timeoutMs = 15000): Promise<any> {
 
 async function fetchCategory(
   apiKey: string,
-  startDate: string,
-  endDate: string,
+  startDate: string | null,
+  endDate: string | null,
   ordering: string,
-): Promise<{ games: RawgGame[]; pages: number; error: string | null }> {
+  options: { parentPlatformId?: number; startPage?: number; maxPages?: number } = {},
+): Promise<{ games: RawgGame[]; pages: number; error: string | null; nextPage: number; count: number }> {
   const all: RawgGame[] = [];
   const seen = new Set<string>();
   let nextUrl: string | null = null;
   let pages = 0;
   let error: string | null = null;
+  let totalCount = 0;
+  const startPage = Math.max(1, Math.min(100, Number(options.startPage ?? 1) || 1));
+  const maxPages = Math.max(1, Math.min(5, Number(options.maxPages ?? MAX_PAGES_PER_CATEGORY) || MAX_PAGES_PER_CATEGORY));
 
   const initial = new URL(RAWG_BASE + "/games");
   initial.searchParams.set("key", apiKey);
-  initial.searchParams.set("dates", startDate + "," + endDate);
+  if (startDate && endDate) initial.searchParams.set("dates", startDate + "," + endDate);
+  if (options.parentPlatformId) initial.searchParams.set("parent_platforms", String(options.parentPlatformId));
   initial.searchParams.set("ordering", ordering);
   initial.searchParams.set("page_size", String(PAGE_SIZE));
+  initial.searchParams.set("page", String(startPage));
   nextUrl = initial.toString();
 
-  while (nextUrl && pages < MAX_PAGES_PER_CATEGORY) {
+  while (nextUrl && pages < maxPages) {
     try {
       const parsed = await fetchJson(nextUrl);
+      totalCount = Number(parsed?.count ?? totalCount) || totalCount;
       const rows = Array.isArray(parsed?.results) ? parsed.results : [];
       for (const game of rows) {
         const id = String(game?.id ?? "");
@@ -166,7 +217,19 @@ async function fetchCategory(
       break;
     }
   }
-  return { games: all, pages, error };
+
+  let nextPage = 1;
+  if (nextUrl) {
+    try {
+      const parsedNextPage = Number(new URL(nextUrl).searchParams.get("page") ?? 1);
+      nextPage = Number.isFinite(parsedNextPage) && parsedNextPage >= 1 && parsedNextPage <= 100
+        ? parsedNextPage
+        : 1;
+    } catch {
+      nextPage = 1;
+    }
+  }
+  return { games: all, pages, error, nextPage, count: totalCount };
 }
 
 async function restRequest(path: string, init: RequestInit = {}): Promise<any> {
@@ -945,16 +1008,57 @@ Deno.serve(async (req: Request) => {
   const recentStart = new Date(now);
   recentStart.setUTCDate(recentStart.getUTCDate() - 45);
 
-  const [futureResult, recentResult] = await Promise.all([
+  let playstationStartPage = 1;
+  let xboxStartPage = 1;
+  try {
+    const stateRows = await restRequest(
+      "steam_sync_state?id=eq.main&select=rawg_playstation_page,rawg_xbox_page",
+    );
+    playstationStartPage = Math.max(1, Math.min(100, Number(stateRows?.[0]?.rawg_playstation_page ?? 1) || 1));
+    xboxStartPage = Math.max(1, Math.min(100, Number(stateRows?.[0]?.rawg_xbox_page ?? 1) || 1));
+  } catch (error) {
+    console.error("RAWG platform pagination state unavailable:", error instanceof Error ? error.message : "unknown error");
+  }
+
+  const [futureResult, recentResult, playstationResult, xboxResult] = await Promise.all([
     fetchCategory(apiKey, dateString(now), dateString(futureEnd), "released"),
     fetchCategory(apiKey, dateString(recentStart), dateString(now), "-released"),
+    // RAWG parent platform 2 = PlayStation; 3 = Xbox. These rolling pages
+    // discover the full historical catalogue as well as newly-added records.
+    fetchCategory(apiKey, null, null, "-added", {
+      parentPlatformId: 2,
+      startPage: playstationStartPage,
+      maxPages: MAX_PLATFORM_PAGES_PER_RUN,
+    }),
+    fetchCategory(apiKey, null, null, "-added", {
+      parentPlatformId: 3,
+      startPage: xboxStartPage,
+      maxPages: MAX_PLATFORM_PAGES_PER_RUN,
+    }),
   ]);
+
+  if (!playstationResult.error && !xboxResult.error) {
+    await restRequest("steam_sync_state?id=eq.main", {
+      method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        rawg_playstation_page: playstationResult.nextPage,
+        rawg_xbox_page: xboxResult.nextPage,
+        last_rawg_platform_scan_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      }),
+    });
+  }
 
   const futureGames = futureResult.games.filter(gameHasSupportedPlatform);
   const recentGames = recentResult.games.filter(gameHasSupportedPlatform);
+  const playstationGames = playstationResult.games.filter(gameHasSupportedPlatform);
+  const xboxGames = xboxResult.games.filter(gameHasSupportedPlatform);
   const candidates = new Map<string, RawgGame>();
   for (const game of futureGames) candidates.set(String(game.id), game);
   for (const game of recentGames) candidates.set(String(game.id), game);
+  for (const game of playstationGames) candidates.set(String(game.id), game);
+  for (const game of xboxGames) candidates.set(String(game.id), game);
 
   let existingRows: CatalogRow[];
   try {
@@ -997,17 +1101,15 @@ Deno.serve(async (req: Request) => {
     const genre = Array.isArray(game.genres)
       ? game.genres.map((item) => String(item?.name ?? "").trim()).filter(Boolean).join("، ")
       : "";
-    const platformNames = Array.isArray(game.platforms)
-      ? game.platforms.map((item) => String(item?.platform?.name ?? "").trim()).filter(Boolean).join("، ")
-      : "";
-    const storeUrl = "https://store.playstation.com/en-us/search/" + encodeURIComponent(String(game.name ?? ""));
+    const platformNames = supportedPlatformNames(game).join("، ");
+    const storeUrl = defaultStoreUrl(String(game.name ?? ""), platformNames);
 
     if (existing) {
       const next: CatalogRow = { ...existing };
       if ((!next.publisher || !String(next.publisher).trim()) && companies.length) next.publisher = companies.join(" • ");
       if (!next.release_date && releaseDate) next.release_date = releaseDate;
       if ((!next.genre || next.genre === "ژانر نامشخص") && genre) next.genre = genre;
-      if ((!next.platforms || !String(next.platforms).trim()) && platformNames) next.platforms = platformNames;
+      if (platformNames) next.platforms = mergePlatformLabels(next.platforms, platformNames);
       if ((next.critic === null || next.critic === undefined) && typeof game.metacritic === "number") {
         next.critic = Math.round(game.metacritic) / 10;
       }
@@ -1098,10 +1200,10 @@ Deno.serve(async (req: Request) => {
       igdbResult.errors.push(error instanceof Error ? error.message : "IGDB sync failed");
     }
 
-    const errors = [futureResult.error, recentResult.error, ...steamResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
+    const errors = [futureResult.error, recentResult.error, playstationResult.error, xboxResult.error, ...steamResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
     const activeSources = 1 + (steamResult.enabled ? 1 : 0) + (gogResult.enabled ? 1 : 0) + (igdbResult.enabled ? 1 : 0);
     const successfulSources = (futureResult.error ? 0 : 1) + (recentResult.error ? 0 : 1) + (steamResult.errors.length ? 0 : 1) + (gogResult.errors.length ? 0 : 1) + (igdbResult.errors.length ? 0 : (igdbResult.enabled ? 1 : 0));
-    const bothEmptyDueToErrors = successfulSources === 0 && futureGames.length === 0 && recentGames.length === 0 && steamResult.processed === 0 && gogResult.discovered === 0;
+    const bothEmptyDueToErrors = successfulSources === 0 && futureGames.length === 0 && recentGames.length === 0 && playstationGames.length === 0 && xboxGames.length === 0 && steamResult.processed === 0 && gogResult.discovered === 0;
     const status: "success" | "partial" | "failed" = bothEmptyDueToErrors ? "failed" : errors.length ? "partial" : "success";
     const totalAdded = added + steamResult.added + gogResult.added + igdbResult.added;
     const totalUpdated = updated + steamResult.updated + gogResult.updated + igdbResult.updated;
@@ -1116,7 +1218,9 @@ Deno.serve(async (req: Request) => {
     const note =
       "همگام‌سازی مستقل سرور انجام شد: RAWG " +
       futureGames.length + " بازی آینده و " + recentGames.length +
-      " بازی منتشرشدهٔ اخیر را دریافت کرد (حداکثر ۵ صفحه برای هر دسته)." +
+      " بازی منتشرشدهٔ اخیر را دریافت کرد؛ اسکن پلتفرم‌ها: PlayStation " + playstationGames.length +
+      " بازی در " + playstationResult.pages + " صفحه (صفحه بعدی " + playstationResult.nextPage + ") و Xbox " +
+      xboxGames.length + " بازی در " + xboxResult.pages + " صفحه (صفحه بعدی " + xboxResult.nextPage + ")." +
       steamText + gogText + igdbText +
       " مجموع " + totalAdded + " بازی جدید و " + totalUpdated + " بازی تکمیل‌شده." +
       " این بررسی پوشش کامل همهٔ بازی‌های دنیا یا تمام فروشگاه‌ها را تضمین نمی‌کند." + errorText;
