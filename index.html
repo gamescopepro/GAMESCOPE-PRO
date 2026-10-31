@@ -1349,8 +1349,24 @@ render();
   say("در حال ورود…");const {data,error}=await client.auth.signInWithPassword({email,password});if(error){if(/email not confirmed/i.test(error.message||"")){$("gsResendConfirmation").classList.remove("hidden");say("ایمیل این حساب هنوز تأیید نشده است. «ارسال دوباره ایمیل تأیید» را بزن؛ اگر لینک قبلی منقضی است، از لینک جدید استفاده کن.")}else say(/invalid login credentials/i.test(error.message||"")?"ایمیل یا رمز عبور درست نیست. اگر حساب تأییدنشده است، ابتدا ایمیل تأیید را انجام بده.":error.message);return}
   try{localStorage.setItem("gamescope_login_method_v1",JSON.stringify({method:"email_password",email:data.user.email}))}catch(e){} const {data:profile}=await client.from("profiles").select("username").eq("id",data.user.id).maybeSingle();showUser(data.user,profile?.username);await refreshOwnerState(data.user);await syncDown();
  };
- $("gsForgot").onclick=async()=>{const email=$("gsEmail").value.trim();if(!email){say("اول ایمیلت را وارد کن.");return}
-  const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:SITE_URL});say(error?"خطا در ارسال ایمیل بازیابی: "+error.message:"اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود.");};
+ $("gsForgot").onclick=async()=>{
+  const email=$("gsEmail").value.trim();
+  if(!email){say("اول ایمیلت را وارد کن.");$("gsEmail").focus();return}
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){say("فرمت ایمیل معتبر نیست.");$("gsEmail").focus();return}
+  const button=$("gsForgot"),originalText=button.textContent;
+  button.disabled=true;button.textContent="در حال ارسال…";say("در حال ثبت درخواست بازیابی رمز…");
+  try{
+   const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:SITE_URL});
+   if(error){
+    const message=String(error.message||"");
+    say(/rate limit|too many requests|over_email_send_rate_limit/i.test(message)
+     ?"ارسال ایمیل بازیابی موقتاً محدود شده است. کمی صبر کن و دوباره فقط یک‌بار درخواست بده."
+     :"ارسال لینک بازیابی ناموفق بود: "+message);
+   }else say("اگر این ایمیل حساب داشته باشد، لینک بازیابی رمز برایش ارسال می‌شود. صندوق ورودی و هرزنامه را بررسی کن.");
+  }catch(error){
+   say("ارتباط با سرویس بازیابی برقرار نشد: "+(error?.message||"خطای شبکه")+"؛ اینترنت را بررسی کن و دوباره تلاش کن.");
+  }finally{button.disabled=false;button.textContent=originalText}
+ };
  $("gsResendConfirmation").onclick=async()=>{
   const email=$("gsEmail").value.trim();if(!email){say("ابتدا ایمیل حساب را وارد کن.");$("gsEmail").focus();return}
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){say("فرمت ایمیل معتبر نیست.");return}
@@ -1370,6 +1386,7 @@ render();
  };
 
  $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}try{localStorage.removeItem("gamescope_login_method_v1");sessionStorage.removeItem("gamescope_entry_choice_v1")}catch(e){}showUser(null);say("از حساب خارج شدی.")};
+ let passwordRecoveryViewOpened=false;
  function clearRecoveryTokensFromUrl(){
   try{
    const cleanUrl=new URL(window.location.href);
@@ -1383,6 +1400,8 @@ render();
   if(!overlay||!panel)return;
   overlay.classList.add("open");
   panel.classList.remove("hidden");
+  if(passwordRecoveryViewOpened)return;
+  passwordRecoveryViewOpened=true;
   $("gsNewPassword").value="";
   $("gsConfirmNewPassword").value="";
   $("gsPasswordRecoveryStatus").textContent="لینک بازیابی تأیید شد. رمز جدید را وارد و ذخیره کن.";
@@ -1398,6 +1417,7 @@ render();
    const {data,error}=await client.auth.updateUser({password});
    if(error)throw error;
    $("gsPasswordRecoveryPanel").classList.add("hidden");
+   passwordRecoveryViewOpened=false;
    clearRecoveryTokensFromUrl();
    status.textContent="رمز عبور با موفقیت تغییر کرد. اکنون می‌توانی با رمز جدید وارد شوی.";
    say("رمز عبور با موفقیت تغییر کرد.");
@@ -1408,9 +1428,14 @@ render();
    button.disabled=false;button.textContent="ذخیره رمز جدید";
   }
  };
- $("gsCancelPasswordRecovery").onclick=()=>{
+ $("gsCancelPasswordRecovery").onclick=async()=>{
   $("gsPasswordRecoveryPanel").classList.add("hidden");
+  passwordRecoveryViewOpened=false;
+  clearRecoveryTokensFromUrl();
+  try{await client.auth.signOut()}catch(e){console.warn("Could not close recovery session",e)}
+  showUser(null);
   $("gsPasswordRecoveryStatus").textContent="فرم بازیابی بسته شد. برای تعیین دوباره رمز، یک لینک بازیابی جدید درخواست کن.";
+  say("نشست بازیابی بسته شد. برای شروع دوباره، یک لینک بازیابی جدید درخواست کن.");
  };
  const settingsOverlay=$("gsSettingsOverlay");
  function closeGsSettings(){settingsOverlay?.classList.remove("open")}
