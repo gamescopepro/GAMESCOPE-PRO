@@ -40,9 +40,13 @@ small{color:#8196b1}.eyebrow{color:var(--cyan);font-size:12px;font-weight:bold;l
 <h1>GAMESCOPE PRO — Data Sources and Catalog Updates</h1>
 <p class="lead">How the online game catalog gets its information and what its update status means.</p>
 <h2>Primary game-information source</h2>
-<p>The GAMESCOPE PRO online catalog uses the <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">RAWG video game database and API</a> as an external source for game records and related metadata.</p>
+<p>The current GAMESCOPE PRO online catalog uses the <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer">RAWG video game database and API</a> as its primary external source for PlayStation, PC and Xbox game records and related metadata.</p>
+<h2>Platform coverage</h2>
+<p>The public catalog accepts a game only when the source identifies at least one PlayStation, PC or Xbox version. A cross-platform game may still be included when it also has an iOS or Android version; games with only mobile, Nintendo or web platforms are excluded.</p>
 <h2>What information may be available?</h2>
 <p>Depending on the source record, a game may include its title, cover art, description, platforms, genres, developer, publisher, rating and release date. Not every field is available for every game.</p>
+<h2>Additional store sources</h2>
+<p>RAWG currently supplies the cross-platform records used by the site. A dedicated Steam connection using Steam's official Store API is a planned addition and is not yet active. Xbox platform records currently come through RAWG; GAMESCOPE PRO does not claim a direct connection to a public, unrestricted Xbox master-catalog API. Additional providers will be added only after their access and data-use terms are checked.</p>
 <h2>Automatic refresh</h2>
 <p>When the homepage is open, its online catalog is designed to refresh periodically in the browser. A separate scheduled server-side synchronization also checks a limited selection of catalog records. A refresh can discover changes only when those changes are present in the upstream source and included in the records checked by that run.</p>
 <h2>Coverage and accuracy</h2>
