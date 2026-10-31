@@ -366,9 +366,9 @@ function gameStoreLinks(game){
  const names=(Array.isArray(game?.platforms)?game.platforms:[]).map(item=>String(item?.platform?.name||item?.name||"").trim().toLowerCase());
  const title=encodeURIComponent(String(game?.name||""));
  const links=[];
- if(names.some(name=>/^(playstation(?:\\s|$)|ps\\s?(?:1|2|3|4|5)\\b|psp\\b|ps vita\\b)/i.test(name)))links.push({label:"PlayStation Store",url:"https://store.playstation.com/en-us/search/"+title});
+ if(names.some(name=>/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name)))links.push({label:"PlayStation Store",url:"https://store.playstation.com/en-us/search/"+title});
  if(names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name)))links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
- if(names.some(name=>/^xbox(?:\\s|$)/i.test(name)))links.push({label:"Xbox Store",url:"https://www.xbox.com/en-US/search?q="+title});
+ if(names.some(name=>/^xbox(?:\s|$)/i.test(name)))links.push({label:"Xbox Store",url:"https://www.xbox.com/en-US/search?q="+title});
  return links;
 }
 function siteCatalogRowToRawg(row){
