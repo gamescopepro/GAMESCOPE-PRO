@@ -27,7 +27,7 @@ Search for game titles, browse available platforms, check release dates, discove
 - Platform, genre, publisher and release-date information
 - Personal game library, favorites, ratings and notes
 - Multilingual interface
-- Server-side multi-source catalog synchronization every 15 minutes
+- Server-side RAWG, Steam featured-feed and queued Steam-detail synchronization every 15 minutes; broad SteamSpy discovery advances one page per day
 - Manual online source check and latest update report
 
 ## Data and technology
