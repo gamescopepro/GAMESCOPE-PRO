@@ -1063,10 +1063,32 @@ render();
   $("gsAdminList").innerHTML=rows.length?rows.map(r=>'<article class="admin-row"><div class="admin-row-main"><strong>'+esc(r.emoji||"🎮")+' '+esc(r.title)+(r.is_hidden?' <span class="chip">مخفی</span>':'')+'</strong><div class="admin-row-meta">'+esc(r.genre||"ژانر نامشخص")+' • '+esc(r.publisher||"ناشر ثبت نشده")+'<br>پلتفرم: '+esc(r.platforms||"PS5")+'<br>وضعیت: '+releaseLabel(r.release_status)+(r.release_date?' • '+esc(r.release_date):'')+' • '+(r.is_builtin?'بازی پایهٔ سایت':'بازی افزوده‌شده توسط مالک')+'</div></div><div class="admin-row-actions"><button data-admin-action="edit" data-id="'+esc(r.id)+'" type="button">✏️ ویرایش</button><button class="secondary" data-admin-action="toggle" data-id="'+esc(r.id)+'" type="button">'+(r.is_hidden?'نمایش':'پنهان‌سازی')+'</button><button class="danger" data-admin-action="delete" data-id="'+esc(r.id)+'" type="button">حذف</button></div></article>').join(""):'<div class="empty">بازی‌ای پیدا نشد.</div>';
   updateAdminCounts();
  }
+ async function fetchAllCatalogRows({visibleOnly=false}={}){
+  const pageSize=1000,rows=[];
+  for(let offset=0;offset<100000;offset+=pageSize){
+   let query=client.from("site_catalog").select("*").order("title",{ascending:true}).order("id",{ascending:true}).range(offset,offset+pageSize-1);
+   if(visibleOnly)query=query.eq("is_hidden",false);
+   const {data,error}=await query;
+   if(error)throw error;
+   const page=Array.isArray(data)?data:[];
+   rows.push(...page);
+   if(page.length<pageSize)break;
+  }
+  return rows;
+ }
+ function normalizeCatalogUpsertRow(row){
+  return {
+   id:String(row.id),title:String(row.title||"").trim(),
+   genre:row.genre??"ژانر نامشخص",platforms:row.platforms??"نامشخص",
+   emoji:row.emoji??"🎮",critic:row.critic??null,publisher:row.publisher??null,
+   release_date:row.release_date??null,release_status:row.release_status??"unknown",
+   store_url:row.store_url??null,is_hidden:row.is_hidden??false,
+   is_builtin:row.is_builtin??false,updated_at:row.updated_at??new Date().toISOString()
+  };
+ }
  async function loadGlobalCatalog(){
-  const {data,error}=await client.from("site_catalog").select("*").order("title");
-  if(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
-  adminCatalogRows=data||[];
+  try{adminCatalogRows=await fetchAllCatalogRows();}
+  catch(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
   window.__gamescopePublicCatalogRows=adminCatalogRows.filter(row=>!row.is_hidden&&String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
   window.__gamescopePublicCatalogLoadedAt=Date.now();
   render();renderAdminList();return true;
@@ -1075,16 +1097,15 @@ render();
   const cached=window.__gamescopePublicCatalogRows;
   const loadedAt=Number(window.__gamescopePublicCatalogLoadedAt||0);
   if(!force&&Array.isArray(cached)&&Date.now()-loadedAt<5*60*1000)return cached;
-  const {data,error}=await client.from("site_catalog").select("*").eq("is_hidden",false).order("title");
-  if(error)throw error;
-  window.__gamescopePublicCatalogRows=(Array.isArray(data)?data:[]).filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
+  const data=await fetchAllCatalogRows({visibleOnly:true});
+  window.__gamescopePublicCatalogRows=data.filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
   window.__gamescopePublicCatalogLoadedAt=Date.now();
   return window.__gamescopePublicCatalogRows;
  };
  window.gamescopePublishRawgResults=async function(futureGames,recentGames){
   if(!currentUser||!isOwner)return {published:false,added:0,updated:0,items:[]};
-  const {data:existingRows,error}=await client.from("site_catalog").select("*");
-  if(error)throw new Error("امکان خواندن کاتالوگ عمومی نبود: "+error.message);
+  let existingRows;
+  try{existingRows=await fetchAllCatalogRows()}catch(error){throw new Error("امکان خواندن کاتالوگ عمومی نبود: "+error.message)}
   const rows=existingRows||[],byId=new Map(rows.map(r=>[String(r.id),r])),byTitle=new Map(rows.map(r=>[normalizeGameName(r.title),r]));
   const today=new Date().toISOString().slice(0,10),unique=new Map();
   (futureGames||[]).forEach(g=>unique.set(String(g.id),{game:g}));
@@ -1124,7 +1145,7 @@ render();
    }
   }
   for(let i=0;i<batch.length;i+=100){
-   const {error:upsertError}=await client.from("site_catalog").upsert(batch.slice(i,i+100),{onConflict:"id"});
+   const {error:upsertError}=await client.from("site_catalog").upsert(batch.slice(i,i+100).map(normalizeCatalogUpsertRow),{onConflict:"id"});
    if(upsertError)throw new Error("ذخیرهٔ تغییرات سراسری ناموفق بود: "+upsertError.message);
   }
   if(batch.length)await loadGlobalCatalog();
