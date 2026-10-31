@@ -573,7 +573,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
   const now = new Date();
   const nowSeconds = Math.floor(now.getTime() / 1000);
   const mayFetchSteamSpy = !Number.isFinite(lastFetchedAt) ||
-    now.getTime() - lastFetchedAt >= 60_000;
+    now.getTime() - lastFetchedAt >= 24 * 60 * 60 * 1000;
 
   if (mayFetchSteamSpy) {
     const url = "https://steamspy.com/api.php?request=all&page=" + page;
@@ -700,6 +700,34 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
         body: JSON.stringify(writeRows.slice(offset, offset + 100)),
       });
     }
+
+    // Put newly imported, incomplete Steam AppIDs into the bounded detail queue.
+    // Existing catalogue entries are already in the one-time backfill queue, so
+    // do not reset their retry state on every daily SteamSpy page.
+    const detailQueueRows = discovered
+      .filter((app) => {
+        const catalogId = "steam_" + app.appid;
+        if (byId.has(catalogId)) return false;
+        const target = catalogWrites.get(catalogId) ?? byTitle.get(normalizeName(app.name));
+        if (!target || target.is_hidden) return false;
+        return !target.release_date ||
+          target.release_status === "unknown" ||
+          !String(target.publisher ?? "").trim();
+      })
+      .map((app) => ({
+        appid: app.appid,
+        last_modified: nowSeconds,
+        processed_at: null,
+      }));
+    for (let offset = 0; offset < detailQueueRows.length; offset += 500) {
+      const chunk = detailQueueRows.slice(offset, offset + 500);
+      await restRequest("steam_sync_queue?on_conflict=appid", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(chunk),
+      });
+    }
+    result.queued += detailQueueRows.length;
 
     // Advance the page only after its catalogue rows have been safely stored.
     const nextPage = sourceApps.length >= 1000 ? page + 1 : 0;
