@@ -27,10 +27,11 @@ Search for game titles, browse available platforms, check release dates, discove
 - Platform, genre, publisher and release-date information
 - Personal game library, favorites, ratings and notes
 - Multilingual interface
-- Server-side catalog synchronization
+- Server-side multi-source catalog synchronization every 15 minutes
+- Manual online source check and latest update report
 
 ## Data and technology
 
-The catalog uses RAWG as an external game-information source. Coverage, availability and accuracy depend on the upstream data provider. The public website is hosted with GitHub Pages and uses Supabase for account and catalog services.
+The catalog combines RAWG metadata, Steam discovery via SteamSpy and public Steam Store endpoints, and best-effort GOG storefront discovery. IGDB is supported as an optional enrichment provider when Twitch application credentials are stored securely as Supabase Edge Function secrets. Coverage, availability and accuracy depend on each provider, its rate limits, and the pages checked by each run. The public website is hosted with GitHub Pages and uses Supabase for account and catalog services.
 
 GAMESCOPE PRO is an independent community project and is not affiliated with Sony Interactive Entertainment, Microsoft, Valve or RAWG.
