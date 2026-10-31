@@ -813,25 +813,43 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       const publisher = [...new Set(companies)].slice(0, 2).join(" • ") ||
         String(existing?.publisher ?? "") || null;
       const steamUrl = "https://store.steampowered.com/app/" + appid + "/";
-      const mergeableSameTitle = Boolean(sameTitle) && !String(sameTitle?.id ?? "").startsWith("steam_");
+      const hiddenSameTitle = Boolean(sameTitle?.is_hidden) &&
+        !String(sameTitle?.id ?? "").startsWith("steam_");
+      if (hiddenSameTitle) {
+        // Respect a deliberately hidden exact-title catalog entry. Do not surface
+        // a second Steam row that would bypass the owner's hidden-game decision.
+        await markSteamQueueProcessed(appid);
+        result.processed++;
+        continue;
+      }
+      const mergeableSameTitle = Boolean(sameTitle) &&
+        !String(sameTitle?.id ?? "").startsWith("steam_") &&
+        !sameTitle?.is_hidden;
       const target = mergeableSameTitle ? sameTitle : existing;
 
-      if (mergeableSameTitle && sameTitle && !sameTitle.is_hidden) {
+      if (mergeableSameTitle && sameTitle) {
         const currentPlatforms = String(sameTitle.platforms ?? "");
-        const hasPc = /\bpc\b/i.test(currentPlatforms);
+        const hasPc = /\\bpc\\b/i.test(currentPlatforms);
+        const patch: Record<string, unknown> = {
+          platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
+          store_url: sameTitle.store_url || steamUrl,
+          updated_at: new Date().toISOString(),
+        };
+        if (!String(sameTitle.publisher ?? "").trim() && publisher) patch.publisher = publisher;
+        if (!sameTitle.release_date && releaseDate) patch.release_date = releaseDate;
+        if ((sameTitle.release_status || "unknown") === "unknown" && releaseStatus !== "unknown") {
+          patch.release_status = releaseStatus;
+        }
+        if ((!sameTitle.genre || sameTitle.genre === "ژانر نامشخص") && genres) patch.genre = genres;
         await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
           method: "PATCH",
           headers: { "Prefer": "return=minimal" },
-          body: JSON.stringify({
-            platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
-            store_url: sameTitle.store_url || steamUrl,
-            updated_at: new Date().toISOString(),
-          }),
+          body: JSON.stringify(patch),
         });
         result.updated++;
         result.items.push({
           kind: "updated", title,
-          text: "نسخهٔ Steam بررسی شد؛ پلتفرم PC و لینک مستقیم Steam ثبت شد.",
+          text: "اطلاعات Steam برای پلتفرم، ناشر، تاریخ انتشار و لینک فروشگاه تکمیل شد.",
         });
       } else {
         const row: CatalogRow = {
