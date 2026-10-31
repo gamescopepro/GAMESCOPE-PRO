@@ -367,25 +367,30 @@ function gameStoreLinks(game){
  const title=encodeURIComponent(String(game?.name||""));
  const links=[];
  if(names.some(name=>/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name)))links.push({label:"PlayStation Store",url:"https://store.playstation.com/en-us/search/"+title});
- if(names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name)))links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
+ const directSteam=String(game?.storeUrl||"");
+ if(/^https:\/\/store\.steampowered\.com\/app\/[0-9]+\/?(?:\?.*)?$/i.test(directSteam))links.push({label:"Steam Store",url:directSteam});
+ else if(names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name)))links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
  if(names.some(name=>/^xbox(?:\s|$)/i.test(name)))links.push({label:"Xbox Store",url:"https://www.xbox.com/en-US/search?q="+title});
  return links;
 }
 function siteCatalogRowToRawg(row){
- const match=/^rawg_([0-9]+)$/.exec(String(row?.id||""));
+ const match=/^(rawg|steam)_([0-9]+)$/.exec(String(row?.id||""));
  if(!match||!String(row?.title||"").trim())return null;
+ const source=match[1],sourceId=match[2];
  const platformNames=String(row.platforms||"").split(/[،,]/).map(x=>x.trim()).filter(Boolean);
  if(!platformNames.some(isSupportedPlatformName))return null;
  const publisherNames=String(row.publisher||"").split(" • ").map(x=>x.trim()).filter(Boolean);
  const critic=row.critic===null||row.critic===undefined?null:Number(row.critic);
+ const isSteam=source==="steam";
+ const slug=(isSteam?"steam-":"rawg-")+sourceId+"-"+String(row.title).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
  return {
-  id:Number(match[1]),name:String(row.title),released:row.release_date||"",
+  id:isSteam?String(row.id):Number(sourceId),name:String(row.title),slug,released:row.release_date||"",
   rating:Number.isFinite(critic)?critic/2:null,metacritic:Number.isFinite(critic)?critic*10:null,
   background_image:"",genres:row.genre?[{name:String(row.genre)}]:[],
   platforms:platformNames.map(name=>({platform:{name}})),
   publishers:publisherNames.map(name=>({name})),developers:[],
-  storeUrl:row.store_url||("https://store.playstation.com/en-us/search/"+encodeURIComponent(String(row.title))),
-  gamescopeCatalog:true,releaseStatus:row.release_status||"unknown"
+  storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":"https://store.playstation.com/en-us/search/"+encodeURIComponent(String(row.title))),
+  gamescopeCatalog:true,gamescopeOfficial:isSteam,releaseStatus:row.release_status||"unknown"
  };
 }
 function rawgGameObject(g){
@@ -423,7 +428,7 @@ function renderOnlineResults(results,append=false){
   const saved=userGames.find(x=>String(x.rawgId||"")===String(g.id)||String(x.id)==="rawg_"+String(g.id)||normalizeGameName(x.title)===normalizeGameName(g.name||""));
   const addLabel=saved?(saved.owned?"✓ در کتابخانه":"✓ در بازی‌های من"):"＋ افزودن به بازی‌های من";
   const coverClass=imageUrl?"has-cover":"cover-missing";
-  return '<article class="card" data-online-game-id="'+Number(g.id)+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز RAWG: <b class="score">'+rating+'</b> / 5</div><div class="card-actions" style="flex-wrap:wrap"><button onclick="addRawgGame('+Number(g.id)+')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>' 
+  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions" style="flex-wrap:wrap"><button onclick="addRawgGame(\''+esc(String(g.id))+'\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>' 
  }).join("");
  if(!append)box.innerHTML="";
  box.insertAdjacentHTML("beforeend",html);
