@@ -353,10 +353,10 @@ function companyNames(g){
  return [...new Set([...(g?.publishers||[]),...(g?.developers||[])].map(x=>typeof x==="string"?x:x?.name).filter(Boolean))].slice(0,3);
 }
 function isSupportedPlatformName(value){
- const name=String(value||"").trim().toLowerCase().replace(/\\s+/g," ");
+ const name=String(value||"").trim().toLowerCase().replace(/\s+/g," ");
  if(["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name))return true;
- if(/^(playstation(?:\\s|$)|ps\\s?(?:1|2|3|4|5)\\b|psp\\b|ps vita\\b)/i.test(name))return true;
- if(/^xbox(?:\\s|$)/i.test(name))return true;
+ if(/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name))return true;
+ if(/^xbox(?:\s|$)/i.test(name))return true;
  return false;
 }
 function gameHasSupportedPlatform(game){
