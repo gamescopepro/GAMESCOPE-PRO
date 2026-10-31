@@ -314,7 +314,7 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
 </main>
 <script>
 const KEY="sadra_pshub_v1";
-let userGames=[];try{userGames=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){userGames=[]}
+let userGames=[]; // The retired personal-library data is intentionally not loaded or deleted.
 let filter="all", query="", renderLimit=48;
 // The public starter/recommended catalogue was intentionally removed.
 // Keep only games saved by the user in this personal list.
@@ -1036,6 +1036,7 @@ function hydrateMissingCovers(games){
  pumpCoverHydration();
 }
 function render(){
+ if(document.getElementById("legacyPersonalLibrary")?.hidden)return;
  const all=allGames();document.getElementById("countStat").textContent=all.filter(g=>g.owned).length;
  document.getElementById("favStat").textContent=all.filter(g=>g.fav).length;
  const rated=all.filter(g=>g.owned&&g.rating!==null&&g.rating!==""&&Number.isFinite(Number(g.rating)));
@@ -1101,7 +1102,7 @@ document.getElementById("importFile").onchange=async e=>{let f=e.target.files[0]
  data=data.filter(g=>g&&typeof g==="object"&&typeof g.id==="string"&&typeof g.title==="string"&&g.title.trim());
  data=data.map(g=>({...g,title:g.title.trim(),genre:typeof g.genre==="string"?g.genre:"ژانر نامشخص",owned:!!g.owned,fav:!!g.fav,rating:g.rating===null||g.rating===""||g.rating===undefined?null:Number(g.rating)})).filter(g=>g.rating===null||(Number.isFinite(g.rating)&&g.rating>=0&&g.rating<=10));
  userGames=data;persist();render();toast("پشتیبان معتبر وارد شد")}catch(err){toast("فایل پشتیبان معتبر نیست")}e.target.value=""};
-window.gamescopeReload=()=>{try{userGames=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){userGames=[]}render()};
+window.gamescopeReload=()=>{userGames=[];render()};
 render();
 </script>
 
