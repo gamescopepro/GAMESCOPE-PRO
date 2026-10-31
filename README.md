@@ -5,6 +5,11 @@
 Visit the live website:  
 https://gamescopepro.github.io/GAMESCOPE-PRO/
 
+Project information:
+- [About GAMESCOPE PRO](https://gamescopepro.github.io/GAMESCOPE-PRO/about/)
+- [Frequently asked questions](https://gamescopepro.github.io/GAMESCOPE-PRO/faq/)
+- [Data sources and catalog updates](https://gamescopepro.github.io/GAMESCOPE-PRO/data-sources/)
+
 ## Discover games across platforms
 
 Explore video games for:
