@@ -318,7 +318,7 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 
 const RAWG_PROXY_URL="https://axwjiwpwqoykvcbumixy.supabase.co/functions/v1/game-catalog";
 const RAWG_PROXY_PUBLIC_KEY="sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-";
-let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLocalQueue=[], onlineRenderedNames=new Set(), onlineLastQuery="", onlineBusy=false, onlineUpcomingMode=false, onlineLastLoadedAt=0;
+let onlinePage=1, onlineNext=null, onlineNextQueue=[], onlineLocalQueue=[], onlineRenderedNames=new Map(), onlineLastQuery="", onlineBusy=false, onlineUpcomingMode=false, onlineLastLoadedAt=0;
 const onlineCache=new Map();
 const rawgResponseCache=new Map();
 function setOnlineStatus(message){const el=document.getElementById("onlineStatus");if(el)el.textContent=message}
@@ -415,8 +415,18 @@ function addRawgGame(id){
 }
 function renderOnlineResults(results,append=false){
  results=(Array.isArray(results)?results:[]).filter(gameHasSupportedPlatform);
- if(!append)onlineRenderedNames=new Set();
- results=results.filter(g=>{const key=normalizeGameName(g.name);if(!key||onlineRenderedNames.has(key))return false;onlineRenderedNames.add(key);return true});
+ if(!append)onlineRenderedNames=new Map();
+ results=results.filter(g=>{
+  const key=normalizeGameName(g.name);
+  if(!key)return false;
+  const source=String(g.dataSource||(String(g.id||"").startsWith("steam_")?"STEAM":String(g.id||"").startsWith("gog_")?"GOG":String(g.id||"").startsWith("igdb_")?"IGDB":"RAWG")).toUpperCase();
+  const prior=onlineRenderedNames.get(key);
+  if(!prior){onlineRenderedNames.set(key,source);return true}
+  // Multiple distinct Steam AppIDs can legitimately share a title. Keep them,
+  // but avoid duplicating the same title when another provider also lists it.
+  if(source==="STEAM"&&prior==="STEAM")return true;
+  return false;
+ });
  const box=document.getElementById("onlineResults");
  const html=results.map(g=>{
   onlineCache.set(String(g.id),g);
