@@ -214,54 +214,189 @@ type SteamSyncResult = {
   processed: number;
   added: number;
   updated: number;
+  discovered: number;
+  page: number;
   errors: string[];
   items: Array<{ kind: string; title: string; text: string }>;
 };
 
+function pgIn(values: string[]): string {
+  return "in.(" + values.map((value) =>
+    '"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'
+  ).join(",") + ")";
+}
+
 async function syncSteamCatalog(): Promise<SteamSyncResult> {
   const result: SteamSyncResult = {
-    enabled: false, queued: 0, processed: 0, added: 0, updated: 0, errors: [], items: [],
+    enabled: true, queued: 0, processed: 0, added: 0, updated: 0,
+    discovered: 0, page: 0, errors: [], items: [],
   };
-  const apiKey = Deno.env.get("STEAM_WEB_API_KEY")?.trim() ?? "";
-  if (!apiKey) return result;
-  result.enabled = true;
 
-  const stateRows = await restRequest("steam_sync_state?id=eq.main&select=last_modified");
-  const storedCursor = Number(stateRows?.[0]?.last_modified ?? 0);
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  // On first activation, bootstrap the most recent seven days; RAWG remains the broad historical catalog.
-  const since = storedCursor > 0 ? storedCursor : nowSeconds - 7 * 24 * 60 * 60;
-  let maxModified = since;
-  let lastAppId = 0;
-  const pageSize = 50000;
+  // SteamSpy's public catalogue endpoint needs no personal Steam Web API key.
+  const stateRows = await restRequest(
+    "steam_sync_state?id=eq.main&select=steamspy_page,last_steamspy_fetch_at",
+  );
+  let page = Math.max(0, Number(stateRows?.[0]?.steamspy_page ?? 0) || 0);
+  const lastFetchedAt = stateRows?.[0]?.last_steamspy_fetch_at
+    ? Date.parse(String(stateRows[0].last_steamspy_fetch_at))
+    : 0;
+  const now = new Date();
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const mayFetchSteamSpy = !Number.isFinite(lastFetchedAt) ||
+    now.getTime() - lastFetchedAt >= 60_000;
 
-  for (let page = 0; page < 10; page++) {
-    const input: Record<string, unknown> = {
-      include_games: true,
-      include_dlc: false,
-      include_software: false,
-      include_videos: false,
-      include_hardware: false,
-      max_results: pageSize,
-      if_modified_since: since,
-    };
-    if (lastAppId > 0) input.last_appid = lastAppId;
-    const url = new URL("https://api.steampowered.com/IStoreService/GetAppList/v1/");
-    url.searchParams.set("key", apiKey);
-    url.searchParams.set("input_json", JSON.stringify(input));
-    const payload = await fetchJson(url.toString(), 20000);
-    const body = payload?.response ?? payload;
-    const apps = Array.isArray(body?.apps) ? body.apps : [];
-    if (!apps.length) break;
+  if (mayFetchSteamSpy) {
+    const url = "https://steamspy.com/api.php?request=all&page=" + page;
+    const payload = await fetchJson(url, 25000);
+    let sourceApps: any[] = [];
+    if (Array.isArray(payload)) {
+      sourceApps = payload;
+    } else if (payload && typeof payload === "object") {
+      sourceApps = Object.entries(payload).map(([key, value]) => ({
+        ...(value && typeof value === "object" ? value as Record<string, unknown> : {}),
+        appid: (value as any)?.appid ?? key,
+      }));
+    }
+    const discovered = sourceApps.map((app: any) => ({
+      appid: Number(app?.appid ?? app?.app_id),
+      name: String(app?.name ?? "").trim(),
+      publisher: String(app?.publisher ?? app?.developer ?? "").trim(),
+      genre: String(app?.genre ?? "").trim(),
+    })).filter((app) =>
+      Number.isSafeInteger(app.appid) && app.appid > 0 &&
+      app.name.length > 0 && app.name.length <= 180
+    );
+    if (sourceApps.length > 0 && discovered.length === 0) {
+      throw new Error("SteamSpy returned data in an unexpected format.");
+    }
 
-    const queueRows = apps.map((app: any) => {
-      const appid = Number(app?.appid ?? app?.app_id);
-      const modified = Number(app?.last_modified ?? since);
-      if (Number.isFinite(modified)) maxModified = Math.max(maxModified, modified);
-      return { appid, last_modified: Number.isFinite(modified) ? modified : since };
-    }).filter((row: any) => Number.isSafeInteger(row.appid) && row.appid > 0);
-    for (let offset = 0; offset < queueRows.length; offset += 1000) {
-      const chunk = queueRows.slice(offset, offset + 1000);
+    result.discovered = discovered.length;
+    const ids = [...new Set(discovered.map((app) => app.appid))];
+    const idRows: any[] = [];
+    const titleRows: any[] = [];
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const chunk = ids.slice(offset, offset + 100).map(String);
+      const rows = await restRequest(
+        "site_catalog?select=*&id=" + encodeURIComponent(pgIn(chunk)),
+      );
+      if (Array.isArray(rows)) idRows.push(...rows);
+    }
+    const titleValues = [...new Set(discovered.map((app) => app.name))];
+    for (let offset = 0; offset < titleValues.length; offset += 80) {
+      const chunk = titleValues.slice(offset, offset + 80);
+      const rows = await restRequest(
+        "site_catalog?select=*&title=" + encodeURIComponent(pgIn(chunk)),
+      );
+      if (Array.isArray(rows)) titleRows.push(...rows);
+    }
+
+    const byId = new Map<string, any>(idRows.map((row) => [String(row.id), row]));
+    const byTitle = new Map<string, any>();
+    for (const row of titleRows) {
+      const key = normalizeName(row?.title);
+      if (key && !byTitle.has(key)) byTitle.set(key, row);
+    }
+    const catalogWrites = new Map<string, any>();
+    const nowIso = now.toISOString();
+
+    for (const app of discovered) {
+      const catalogId = "steam_" + app.appid;
+      const steamUrl = "https://store.steampowered.com/app/" + app.appid + "/";
+      const existingById = byId.get(catalogId);
+      if (existingById?.is_hidden) continue;
+
+      const sameTitle = byTitle.get(normalizeName(app.name));
+      if (sameTitle && String(sameTitle.id) !== catalogId) {
+        if (sameTitle.is_hidden) continue;
+        const currentPlatforms = String(sameTitle.platforms ?? "");
+        const hasPc = /\\bpc\\b/i.test(currentPlatforms);
+        const next = {
+          ...sameTitle,
+          platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
+          store_url: steamUrl,
+          updated_at: nowIso,
+        };
+        catalogWrites.set(String(next.id), next);
+        byTitle.set(normalizeName(app.name), next);
+        result.updated++;
+      } else {
+        const row = {
+          ...(existingById ?? {}),
+          id: catalogId,
+          title: app.name,
+          genre: existingById?.genre && existingById.genre !== "ژانر نامشخص"
+            ? existingById.genre
+            : app.genre || "ژانر نامشخص",
+          platforms: "PC",
+          emoji: existingById?.emoji || "🎮",
+          critic: existingById?.critic ?? null,
+          publisher: existingById?.publisher || app.publisher || null,
+          release_date: existingById?.release_date ?? null,
+          release_status: existingById?.release_status || "unknown",
+          store_url: steamUrl,
+          is_hidden: false,
+          is_builtin: existingById?.is_builtin ?? false,
+          updated_at: nowIso,
+        };
+        catalogWrites.set(catalogId, row);
+        if (existingById) result.updated++;
+        else result.added++;
+        if (!existingById && result.items.length < MAX_REPORT_ITEMS) {
+          result.items.push({
+            kind: "new",
+            title: app.name,
+            text: "از فهرست عمومی SteamSpy به کاتالوگ PC اضافه شد؛ تاریخ انتشار در انتظار تکمیل از منابع بازی است.",
+          });
+        }
+      }
+    }
+
+    const writeRows = [...catalogWrites.values()];
+    for (let offset = 0; offset < writeRows.length; offset += 100) {
+      await restRequest("site_catalog?on_conflict=id", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(writeRows.slice(offset, offset + 100)),
+      });
+    }
+
+    // Advance the page only after its catalogue rows have been safely stored.
+    const nextPage = discovered.length >= 1000 ? page + 1 : 0;
+    await restRequest("steam_sync_state?id=eq.main", {
+      method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        steamspy_page: nextPage,
+        last_steamspy_fetch_at: nowIso,
+        updated_at: nowIso,
+      }),
+    });
+    page = nextPage;
+  }
+  result.page = page;
+
+  // The Steam storefront's public featured feed is useful for new releases and upcoming games.
+  // It is supplemental discovery, not a complete list of every unreleased Steam title.
+  try {
+    const featured = await fetchJson(
+      "https://store.steampowered.com/api/featuredcategories/?cc=us&l=en",
+      15000,
+    );
+    const featuredIds = new Set<number>();
+    for (const categoryName of ["coming_soon", "new_releases", "top_sellers"]) {
+      const items = featured?.[categoryName]?.items;
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        const appid = Number(item?.id ?? item?.appid);
+        if (Number.isSafeInteger(appid) && appid > 0) featuredIds.add(appid);
+      }
+    }
+    const queueRows = [...featuredIds].map((appid) => ({
+      appid,
+      last_modified: nowSeconds,
+    }));
+    for (let offset = 0; offset < queueRows.length; offset += 500) {
+      const chunk = queueRows.slice(offset, offset + 500);
       await restRequest("steam_sync_queue?on_conflict=appid", {
         method: "POST",
         headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
@@ -269,20 +404,15 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       });
     }
     result.queued += queueRows.length;
-    const last = apps[apps.length - 1];
-    const nextLastAppId = Number(last?.appid ?? last?.app_id ?? body?.last_appid ?? 0);
-    if (apps.length < pageSize || !Number.isSafeInteger(nextLastAppId) || nextLastAppId <= lastAppId) break;
-    lastAppId = nextLastAppId;
+  } catch (error) {
+    result.errors.push("Steam featured feed: " +
+      (error instanceof Error ? error.message : "request failed").slice(0, 180));
   }
 
-  // Move the cursor only after every discovered item has been safely placed in the queue.
-  await restRequest("steam_sync_state?id=eq.main", {
-    method: "PATCH",
-    headers: { "Prefer": "return=minimal" },
-    body: JSON.stringify({ last_modified: Math.max(nowSeconds, maxModified), updated_at: new Date().toISOString() }),
-  });
-
-  const pending = await restRequest("steam_sync_queue?select=appid,last_modified&order=queued_at.asc&limit=8");
+  // Enrich a small, bounded number of featured AppIDs per run to respect public storefront limits.
+  const pending = await restRequest(
+    "steam_sync_queue?select=appid,last_modified&order=queued_at.asc&limit=8",
+  );
   for (const queued of (Array.isArray(pending) ? pending : [])) {
     const appid = Number(queued?.appid);
     if (!Number.isSafeInteger(appid) || appid <= 0) continue;
@@ -294,7 +424,8 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       const detailEntry = detailPayload?.[String(appid)];
       const game = detailEntry?.success ? detailEntry?.data : null;
       const pcPlatforms = game?.platforms ?? {};
-      const isPcGame = game?.type === "game" && Boolean(pcPlatforms.windows || pcPlatforms.mac || pcPlatforms.linux);
+      const isPcGame = game?.type === "game" &&
+        Boolean(pcPlatforms.windows || pcPlatforms.mac || pcPlatforms.linux);
       if (!isPcGame || !game?.name) {
         await restRequest("steam_sync_queue?appid=eq." + appid, { method: "DELETE" });
         result.processed++;
@@ -302,8 +433,9 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       }
 
       const title = String(game.name).trim();
+      const catalogId = "steam_" + appid;
       const existingById = await restRequest(
-        "site_catalog?id=eq.steam_" + appid + "&select=id,is_hidden,is_builtin&limit=1",
+        "site_catalog?id=eq." + catalogId + "&select=*&limit=1",
       );
       const existing = Array.isArray(existingById) ? existingById[0] : null;
       if (existing?.is_hidden) {
@@ -312,10 +444,9 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
         continue;
       }
 
-      // Avoid duplicate public cards when RAWG already supplied this exact title.
-      const titleQuery = "site_catalog?title=eq." + encodeURIComponent(title) +
-        "&select=id,is_hidden,platforms&limit=1";
-      const sameTitleRows = await restRequest(titleQuery);
+      const sameTitleRows = await restRequest(
+        "site_catalog?title=eq." + encodeURIComponent(title) + "&select=*&limit=1",
+      );
       const sameTitle = Array.isArray(sameTitleRows) ? sameTitleRows[0] : null;
       const releaseText = String(game?.release_date?.date ?? "").trim();
       const parsedRelease = releaseText ? Date.parse(releaseText) : NaN;
@@ -333,43 +464,47 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
         ...(Array.isArray(game?.publishers) ? game.publishers : []),
         ...(Array.isArray(game?.developers) ? game.developers : []),
       ].map((name: unknown) => String(name ?? "").trim()).filter(Boolean);
-      const publisher = [...new Set(companies)].slice(0, 2).join(" • ") || null;
+      const publisher = [...new Set(companies)].slice(0, 2).join(" • ") ||
+        String(existing?.publisher ?? "") || null;
       const steamUrl = "https://store.steampowered.com/app/" + appid + "/";
-      const catalogId = "steam_" + appid;
+      const target = sameTitle && String(sameTitle.id) !== catalogId
+        ? sameTitle
+        : existing;
 
-      if (sameTitle && sameTitle.id !== catalogId) {
-        if (!sameTitle.is_hidden) {
-          const platforms = String(sameTitle.platforms ?? "");
-          const hasPc = /\bpc\b/i.test(platforms);
-          await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
-            method: "PATCH",
-            headers: { "Prefer": "return=minimal" },
-            body: JSON.stringify({
-              platforms: hasPc ? platforms : (platforms ? platforms + ", PC" : "PC"),
-              store_url: steamUrl,
-              updated_at: new Date().toISOString(),
-            }),
-          });
-          result.updated++;
-          result.items.push({
-            kind: "updated", title,
-            text: "نسخهٔ Steam شناسایی شد؛ پلتفرم PC و لینک مستقیم Steam بررسی/به‌روزرسانی شد.",
-          });
-        }
+      if (sameTitle && String(sameTitle.id) !== catalogId && !sameTitle.is_hidden) {
+        const currentPlatforms = String(sameTitle.platforms ?? "");
+        const hasPc = /\\bpc\\b/i.test(currentPlatforms);
+        await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
+          method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
+            store_url: steamUrl,
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        result.updated++;
+        result.items.push({
+          kind: "updated", title,
+          text: "نسخهٔ Steam بررسی شد؛ پلتفرم PC و لینک مستقیم Steam ثبت شد.",
+        });
       } else {
         const row: CatalogRow = {
+          ...(target ?? {}),
           id: catalogId,
           title,
-          genre: genres || "ژانر نامشخص",
+          genre: genres || target?.genre || "ژانر نامشخص",
           platforms: "PC",
-          emoji: "🎮",
-          critic: null,
+          emoji: target?.emoji || "🎮",
+          critic: target?.critic ?? null,
           publisher,
-          release_date: releaseDate,
-          release_status: releaseStatus,
+          release_date: releaseDate ?? target?.release_date ?? null,
+          release_status: releaseStatus !== "unknown"
+            ? releaseStatus
+            : (target?.release_status || "unknown"),
           store_url: steamUrl,
           is_hidden: false,
-          is_builtin: false,
+          is_builtin: target?.is_builtin ?? false,
           updated_at: new Date().toISOString(),
         };
         await restRequest("site_catalog?on_conflict=id", {
@@ -382,8 +517,9 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
         result.items.push({
           kind: existing ? "updated" : "new",
           title,
-          text: (existing ? "اطلاعات بازی Steam به‌روزرسانی شد" : "بازی جدید Steam به کاتالوگ افزوده شد") +
-            " • " + (releaseStatus === "upcoming" ? "بازی آینده" : releaseStatus === "released" ? "منتشر شده" : "تاریخ انتشار نامشخص"),
+          text: (existing ? "اطلاعات بازی Steam تکمیل شد" : "بازی جدید Steam به کاتالوگ افزوده شد") +
+            " • " + (releaseStatus === "upcoming" ? "بازی آینده" :
+              releaseStatus === "released" ? "منتشر شده" : "تاریخ انتشار نامشخص"),
         });
       }
 
@@ -396,7 +532,6 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
   }
   return result;
 }
-
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return response({ error: "method_not_allowed" }, 405);
   if (!PROJECT_URL || !SERVICE_KEY) return response({ error: "server_not_configured" }, 500);
@@ -542,7 +677,7 @@ Deno.serve(async (req: Request) => {
     }
 
     let steamResult: SteamSyncResult = {
-      enabled: false, queued: 0, processed: 0, added: 0, updated: 0, errors: [], items: [],
+      enabled: true, queued: 0, processed: 0, added: 0, updated: 0, discovered: 0, page: 0, errors: [], items: [],
     };
     try {
       steamResult = await syncSteamCatalog();
@@ -550,6 +685,7 @@ Deno.serve(async (req: Request) => {
     } catch (error) {
       steamResult = {
         enabled: true, queued: 0, processed: 0, added: 0, updated: 0,
+        discovered: 0, page: 0,
         errors: [error instanceof Error ? error.message : "Steam sync failed"], items: [],
       };
     }
@@ -560,10 +696,11 @@ Deno.serve(async (req: Request) => {
     const totalAdded = added + steamResult.added;
     const totalUpdated = updated + steamResult.updated;
     const errorText = errors.length ? " خطای منبع: " + errors.join(" | ") : "";
-    const steamText = !steamResult.enabled
-      ? " اتصال Steam هنوز فعال نشده؛ Secret با نام STEAM_WEB_API_KEY ثبت نشده است."
-      : " Steam: " + steamResult.queued + " تغییر در صف قرار گرفت، " + steamResult.processed +
-        " مورد بررسی شد، " + steamResult.added + " بازی جدید و " + steamResult.updated + " مورد به‌روزرسانی شد.";
+    const steamText = " Steam بدون کلید شخصی: " + steamResult.discovered +
+      " بازی از صفحهٔ SteamSpy (صفحهٔ بعدی: " + steamResult.page + ") دریافت شد؛ " +
+      steamResult.queued + " شناسه از فهرست‌های فروشگاه در صف جزئیات قرار گرفت، " +
+      steamResult.processed + " مورد بررسی شد، " + steamResult.added +
+      " بازی جدید و " + steamResult.updated + " مورد به‌روزرسانی شد.";
     const note =
       "همگام‌سازی مستقل سرور انجام شد: " +
       futureGames.length + " بازی آینده و " + recentGames.length +
@@ -582,6 +719,9 @@ Deno.serve(async (req: Request) => {
       updated: totalUpdated,
       steam: {
         enabled: steamResult.enabled,
+        source: "SteamSpy public catalogue + Steam Store featured/appdetails",
+        page: steamResult.page,
+        discovered: steamResult.discovered,
         queued: steamResult.queued,
         processed: steamResult.processed,
         added: steamResult.added,
