@@ -376,13 +376,18 @@ function gameHasSupportedPlatform(game){
 function gameStoreLinks(game){
  const names=(Array.isArray(game?.platforms)?game.platforms:[]).map(item=>String(item?.platform?.name||item?.name||"").trim().toLowerCase());
  const title=encodeURIComponent(String(game?.name||""));
- const links=[];
- if(names.some(name=>/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name)))links.push({label:"PlayStation Store",url:"https://store.playstation.com/en-us/search/"+title});
  const directStore=String(game?.storeUrl||"");
+ const hasPlayStation=names.some(name=>/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name));
+ const hasXbox=names.some(name=>/^xbox(?:\s|$)/i.test(name));
+ const hasPc=names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name));
+ const directPlayStation=/^https:\/\/store\.playstation\.com\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?product\/[a-z0-9/_-]+\/?(?:\?.*)?$/i.test(directStore);
+ const directXbox=/^https:\/\/(?:www\.)?xbox\.com\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?games\/store\/[a-z0-9/_-]+\/?(?:\?.*)?$/i.test(directStore);
+ const links=[];
+ if(hasPlayStation)links.push({label:"PlayStation Store",url:directPlayStation?directStore:"https://store.playstation.com/en-us/search/"+title});
  if(/^https:\/\/store\.steampowered\.com\/app\/[0-9]+\/?(?:\?.*)?$/i.test(directStore))links.push({label:"Steam Store",url:directStore});
  else if(/^https:\/\/(?:www\.)?gog\.com\/game\//i.test(directStore))links.push({label:"GOG Store",url:directStore});
- else if(names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name)))links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
- if(names.some(name=>/^xbox(?:\s|$)/i.test(name)))links.push({label:"Xbox Store",url:"https://www.xbox.com/en-US/search?q="+title});
+ else if(hasPc)links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
+ if(hasXbox)links.push({label:"Xbox Store",url:directXbox?directStore:"https://www.xbox.com/en-US/search?q="+title});
  return links;
 }
 function siteCatalogRowToRawg(row){
