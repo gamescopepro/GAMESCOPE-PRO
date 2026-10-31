@@ -5,7 +5,8 @@ const RAWG_BASE = "https://api.rawg.io/api";
 const PAGE_SIZE = 40;
 const MAX_PAGES_PER_CATEGORY = 5;
 const MAX_PLATFORM_PAGES_PER_RUN = 4;
-const DETAIL_LOOKUPS_PER_RUN = 10;
+const DETAIL_LOOKUPS_PER_RUN = 6;
+const RAWG_BACKFILL_LOOKUPS_PER_RUN = 4;
 const MAX_REPORT_ITEMS = 30;
 
 type RawgGame = {
@@ -323,6 +324,168 @@ function releaseDateFromUnknown(value: unknown): string | null {
     return releaseDateFromUnknown(record.date ?? record.timestamp ?? record.value);
   }
   return null;
+}
+
+
+type RawgMetadataBackfillResult = {
+  checked: number;
+  updated: number;
+  cursor: string | null;
+  errors: string[];
+  items: Array<{ kind: string; title: string; text: string }>;
+};
+
+async function backfillRawgCatalogMetadata(
+  apiKey: string,
+  rows: CatalogRow[],
+  now: Date,
+  skipIds: Set<string>,
+): Promise<RawgMetadataBackfillResult> {
+  const result: RawgMetadataBackfillResult = {
+    checked: 0, updated: 0, cursor: null, errors: [], items: [],
+  };
+  const candidates = rows
+    .filter((row) => {
+      const id = String(row.id ?? "");
+      const platforms = String(row.platforms ?? "").split(/[،,]/).map((x) => x.trim());
+      return /^rawg_\\d+$/.test(id) &&
+        !row.is_hidden &&
+        !skipIds.has(id) &&
+        platforms.some(isSupportedPlatformName) &&
+        (
+          !row.release_date ||
+          !String(row.publisher ?? "").trim() ||
+          !String(row.genre ?? "").trim() ||
+          row.genre === "ژانر نامشخص" ||
+          row.critic === null ||
+          row.critic === undefined
+        );
+    })
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  let cursor = "";
+  try {
+    const stateRows = await restRequest(
+      "steam_sync_state?id=eq.main&select=rawg_metadata_cursor",
+    );
+    cursor = String(stateRows?.[0]?.rawg_metadata_cursor ?? "");
+  } catch (error) {
+    throw new Error("RAWG metadata cursor unavailable: " +
+      (error instanceof Error ? error.message : "database error"));
+  }
+
+  if (!candidates.length) {
+    if (cursor) {
+      await restRequest("steam_sync_state?id=eq.main", {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        body: JSON.stringify({ rawg_metadata_cursor: null, updated_at: now.toISOString() }),
+      });
+    }
+    return result;
+  }
+
+  let remaining = cursor
+    ? candidates.filter((row) => String(row.id) > cursor)
+    : candidates;
+  if (!remaining.length) remaining = candidates;
+  const selected = remaining.slice(0, RAWG_BACKFILL_LOOKUPS_PER_RUN);
+  let lastCompleted = "";
+
+  for (const row of selected) {
+    const id = String(row.id);
+    const rawgId = id.slice("rawg_".length);
+    try {
+      const detail = await fetchJson(
+        RAWG_BASE + "/games/" + encodeURIComponent(rawgId) +
+          "?key=" + encodeURIComponent(apiKey),
+        12000,
+      ) as RawgGame;
+      if (!detail || typeof detail !== "object") {
+        throw new Error("RAWG returned an invalid game detail.");
+      }
+
+      const releaseDate = releaseDateFromUnknown(detail.released);
+      const companies = companyNames(detail);
+      const genre = Array.isArray(detail.genres)
+        ? detail.genres.map((item) => String(item?.name ?? "").trim()).filter(Boolean).join("، ")
+        : "";
+      const detailPlatforms = gameHasSupportedPlatform(detail)
+        ? supportedPlatformNames(detail).join("، ")
+        : "";
+      const next: CatalogRow = { ...row };
+      if (!String(next.publisher ?? "").trim() && companies.length) {
+        next.publisher = companies.join(" • ");
+      }
+      if (!next.release_date && releaseDate) next.release_date = releaseDate;
+      if ((!next.genre || next.genre === "ژانر نامشخص") && genre) next.genre = genre;
+      if ((next.critic === null || next.critic === undefined) &&
+          typeof detail.metacritic === "number") {
+        next.critic = Math.round(detail.metacritic) / 10;
+      }
+      if (detailPlatforms) next.platforms = mergePlatformLabels(next.platforms, detailPlatforms);
+      if ((!next.release_status || next.release_status === "unknown") && next.release_date) {
+        next.release_status = next.release_date > dateString(now) ? "upcoming" : "released";
+      }
+      if (!next.store_url) next.store_url = defaultStoreUrl(next.title, String(next.platforms ?? ""));
+
+      const fields: Array<keyof CatalogRow> = [
+        "publisher", "release_date", "release_status", "genre", "critic", "platforms", "store_url",
+      ];
+      const changed = fields.some((field) =>
+        String(next[field] ?? "") !== String(row[field] ?? "")
+      );
+      if (changed) {
+        next.updated_at = now.toISOString();
+        const patch: Record<string, unknown> = {};
+        for (const field of fields) {
+          if (String(next[field] ?? "") !== String(row[field] ?? "")) {
+            patch[field] = next[field] ?? null;
+          }
+        }
+        patch.updated_at = now.toISOString();
+        await restRequest("site_catalog?id=eq." + encodeURIComponent(id), {
+          method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
+          body: JSON.stringify(patch),
+        });
+        result.updated++;
+        const details = [
+          next.publisher && !String(row.publisher ?? "").trim() ? "شرکت سازنده/ناشر" : "",
+          next.release_date && !row.release_date ? "تاریخ انتشار" : "",
+          next.genre && (!row.genre || row.genre === "ژانر نامشخص") ? "ژانر" : "",
+          next.critic !== null && next.critic !== undefined && (row.critic === null || row.critic === undefined) ? "امتیاز منتقدان" : "",
+        ].filter(Boolean);
+        result.items.push({
+          kind: "updated",
+          title: row.title,
+          text: "اطلاعات بازی از RAWG تکمیل شد: " + (details.join("، ") || "فرادادهٔ بازی") + ".",
+        });
+      }
+      result.checked++;
+      lastCompleted = id;
+    } catch (error) {
+      result.errors.push(
+        "RAWG detail " + id + ": " +
+          (error instanceof Error ? error.message : "request failed").slice(0, 180),
+      );
+      // Keep the failed row at the front of the next run's queue.
+      break;
+    }
+  }
+
+  if (lastCompleted) {
+    result.cursor = lastCompleted;
+    await restRequest("steam_sync_state?id=eq.main", {
+      method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        rawg_metadata_cursor: lastCompleted,
+        updated_at: now.toISOString(),
+      }),
+    });
+  }
+  return result;
 }
 
 async function mergeSupplementalGame(
@@ -1098,25 +1261,43 @@ Deno.serve(async (req: Request) => {
     const rawId = "rawg_" + String(game.id);
     const existing = byId.get(rawId) ?? byTitle.get(normalizeName(game.name));
     let companies = companyNames(game);
+    let detailData: RawgGame | null = null;
 
-    if (!companies.length && detailRequests < DETAIL_LOOKUPS_PER_RUN) {
+    const needsDetail = !companies.length || !game.released ||
+      !Array.isArray(game.genres) || !game.genres.length ||
+      typeof game.metacritic !== "number";
+    if (needsDetail && detailRequests < DETAIL_LOOKUPS_PER_RUN) {
       detailRequests++;
       try {
-        const detail = await fetchJson(RAWG_BASE + "/games/" + encodeURIComponent(String(game.id)) + "?key=" + encodeURIComponent(apiKey));
-        companies = companyNames(detail as RawgGame);
+        detailData = await fetchJson(
+          RAWG_BASE + "/games/" + encodeURIComponent(String(game.id)) +
+            "?key=" + encodeURIComponent(apiKey),
+          12000,
+        ) as RawgGame;
+        if (!companies.length) companies = companyNames(detailData);
       } catch {
-        // Publisher/developer enrichment is best-effort; keep the catalog sync alive.
+        // Optional details must not stop the shared catalogue refresh.
       }
     }
 
-    const releaseDate = game.released || existing?.release_date || null;
+    const releaseDate = releaseDateFromUnknown(game.released) ||
+      releaseDateFromUnknown(detailData?.released) || existing?.release_date || null;
     const releaseStatus = releaseDate
       ? (releaseDate > today ? "upcoming" : "released")
       : (existing?.release_status || "unknown");
-    const genre = Array.isArray(game.genres)
-      ? game.genres.map((item) => String(item?.name ?? "").trim()).filter(Boolean).join("، ")
+    const detailGenre = Array.isArray(detailData?.genres)
+      ? detailData.genres.map((item) => String(item?.name ?? "").trim()).filter(Boolean).join("، ")
       : "";
-    const platformNames = supportedPlatformNames(game).join("، ");
+    const genre = Array.isArray(game.genres) && game.genres.length
+      ? game.genres.map((item) => String(item?.name ?? "").trim()).filter(Boolean).join("، ")
+      : detailGenre;
+    const directPlatformNames = supportedPlatformNames(game);
+    const platformNames = (directPlatformNames.length
+      ? directPlatformNames
+      : detailData ? supportedPlatformNames(detailData) : []).join("، ");
+    const metacritic = typeof game.metacritic === "number"
+      ? game.metacritic
+      : typeof detailData?.metacritic === "number" ? detailData.metacritic : null;
     const storeUrl = defaultStoreUrl(String(game.name ?? ""), platformNames);
 
     if (existing) {
@@ -1125,8 +1306,8 @@ Deno.serve(async (req: Request) => {
       if (!next.release_date && releaseDate) next.release_date = releaseDate;
       if ((!next.genre || next.genre === "ژانر نامشخص") && genre) next.genre = genre;
       if (platformNames) next.platforms = mergePlatformLabels(next.platforms, platformNames);
-      if ((next.critic === null || next.critic === undefined) && typeof game.metacritic === "number") {
-        next.critic = Math.round(game.metacritic) / 10;
+      if ((next.critic === null || next.critic === undefined) && typeof metacritic === "number") {
+        next.critic = Math.round(metacritic) / 10;
       }
       if (!next.store_url) next.store_url = storeUrl;
       if (!next.emoji) next.emoji = "🎮";
@@ -1153,7 +1334,7 @@ Deno.serve(async (req: Request) => {
         genre: genre || "ژانر نامشخص",
         platforms: platformNames || "نامشخص",
         emoji: "🎮",
-        critic: typeof game.metacritic === "number" ? Math.round(game.metacritic) / 10 : null,
+        critic: typeof metacritic === "number" ? Math.round(metacritic) / 10 : null,
         publisher: companies.length ? companies.join(" • ") : null,
         release_date: releaseDate,
         release_status: releaseStatus,
@@ -1182,6 +1363,23 @@ Deno.serve(async (req: Request) => {
         headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify(batch.slice(offset, offset + 100).map(normalizeCatalogWrite)),
       });
+    }
+
+    let rawgBackfillResult: RawgMetadataBackfillResult = {
+      checked: 0, updated: 0, cursor: null, errors: [], items: [],
+    };
+    try {
+      const skipRawgIds = new Set(
+        [...candidates.keys()].map((id) => "rawg_" + String(id)),
+      );
+      rawgBackfillResult = await backfillRawgCatalogMetadata(
+        apiKey, existingRows, now, skipRawgIds,
+      );
+      changedItems.push(...rawgBackfillResult.items);
+    } catch (error) {
+      rawgBackfillResult.errors.push(
+        error instanceof Error ? error.message : "RAWG metadata backfill failed",
+      );
     }
 
     let steamResult: SteamSyncResult = {
@@ -1215,13 +1413,13 @@ Deno.serve(async (req: Request) => {
       igdbResult.errors.push(error instanceof Error ? error.message : "IGDB sync failed");
     }
 
-    const errors = [futureResult.error, recentResult.error, playstationResult.error, xboxResult.error, ...steamResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
+    const errors = [futureResult.error, recentResult.error, playstationResult.error, xboxResult.error, ...rawgBackfillResult.errors, ...steamResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
     const activeSources = 1 + (steamResult.enabled ? 1 : 0) + (gogResult.enabled ? 1 : 0) + (igdbResult.enabled ? 1 : 0);
     const successfulSources = (futureResult.error ? 0 : 1) + (recentResult.error ? 0 : 1) + (steamResult.errors.length ? 0 : 1) + (gogResult.errors.length ? 0 : 1) + (igdbResult.errors.length ? 0 : (igdbResult.enabled ? 1 : 0));
     const bothEmptyDueToErrors = successfulSources === 0 && futureGames.length === 0 && recentGames.length === 0 && playstationGames.length === 0 && xboxGames.length === 0 && steamResult.processed === 0 && gogResult.discovered === 0;
     const status: "success" | "partial" | "failed" = bothEmptyDueToErrors ? "failed" : errors.length ? "partial" : "success";
     const totalAdded = added + steamResult.added + gogResult.added + igdbResult.added;
-    const totalUpdated = updated + steamResult.updated + gogResult.updated + igdbResult.updated;
+    const totalUpdated = updated + rawgBackfillResult.updated + steamResult.updated + gogResult.updated + igdbResult.updated;
     const errorText = errors.length ? " خطای منبع: " + errors.join(" | ") : "";
     const steamText = " SteamSpy: " + steamResult.discovered +
       " مورد کشف شد؛ " + steamResult.queued + " شناسهٔ فروشگاه در صف قرار گرفت و " +
@@ -1237,6 +1435,7 @@ Deno.serve(async (req: Request) => {
       " بازی در " + playstationResult.pages + " صفحه (صفحه بعدی " + playstationResult.nextPage + ") و Xbox " +
       xboxGames.length + " بازی در " + xboxResult.pages + " صفحه (صفحه بعدی " + xboxResult.nextPage + ")." +
       steamText + gogText + igdbText +
+      " RAWG metadata backfill: " + rawgBackfillResult.checked + " رکورد بررسی شد و " + rawgBackfillResult.updated + " رکورد تکمیل شد." +
       " مجموع " + totalAdded + " بازی جدید و " + totalUpdated + " بازی تکمیل‌شده." +
       " این بررسی پوشش کامل همهٔ بازی‌های دنیا یا تمام فروشگاه‌ها را تضمین نمی‌کند." + errorText;
 
@@ -1251,6 +1450,7 @@ Deno.serve(async (req: Request) => {
       updated: totalUpdated,
       sources: {
         rawg: { enabled: true, future_found: futureGames.length, recent_found: recentGames.length, errors: [futureResult.error, recentResult.error].filter(Boolean).length },
+        rawg_metadata_backfill: { checked: rawgBackfillResult.checked, updated: rawgBackfillResult.updated, errors: rawgBackfillResult.errors.length, cursor: rawgBackfillResult.cursor },
         steam: {
           enabled: steamResult.enabled,
           source: "SteamSpy public catalogue + Steam Store featured/appdetails",
