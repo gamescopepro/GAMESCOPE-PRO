@@ -213,6 +213,17 @@ header{padding:22px 16px 18px;border-bottom:1px solid var(--line);background:lin
         <div class="field full"><button id="gsForgot" class="secondary" type="button">بازیابی رمز با ایمیل</button></div><div class="field full"><button id="gsResendConfirmation" class="secondary hidden" type="button">📩 ارسال دوباره ایمیل تأیید</button></div>
       </div></div>
       <div id="gsAuthUser" class="hidden"><p id="gsWelcome" style="line-height:1.8"></p><div class="account-buttons"><button id="gsLogout" class="account-btn secondary" type="button">خروج از حساب</button></div></div>
+      <section id="gsPasswordRecoveryPanel" class="panel hidden" style="margin-top:14px;border:1px solid #3984bd" aria-labelledby="gsPasswordRecoveryTitle">
+       <div class="section-title"><h3 id="gsPasswordRecoveryTitle">🔐 تعیین رمز عبور جدید</h3><span class="hint">PASSWORD RESET</span></div>
+       <p style="font-size:12px;line-height:1.8;color:#bfd3ea">برای تکمیل بازیابی، رمز جدید را دو بار وارد کن. حداقل ۸ کاراکتر لازم است.</p>
+       <div class="formgrid">
+        <div class="field"><label for="gsNewPassword">رمز عبور جدید</label><input id="gsNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="رمز جدید"></div>
+        <div class="field"><label for="gsConfirmNewPassword">تکرار رمز عبور جدید</label><input id="gsConfirmNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="تکرار رمز جدید"></div>
+        <div class="field full"><button id="gsSaveNewPassword" type="button">ذخیره رمز جدید</button></div>
+        <div class="field full"><button id="gsCancelPasswordRecovery" class="secondary" type="button">بستن فرم بازیابی</button></div>
+       </div>
+       <p id="gsPasswordRecoveryStatus" class="account-status" role="status" aria-live="polite">لینک بازیابی را از ایمیل باز کرده‌ای؛ رمز جدید را تعیین کن.</p>
+      </section>
       <div id="gsAuthMessage" class="account-status" role="status" aria-live="polite">ثبت‌نام با ایمیل و نام کاربری یکتا؛ کتابخانه و علاقه‌مندی‌هایت بین دستگاه‌ها همگام می‌شوند.</div>
     </div><div class="panel hidden" id="gsOwnerGate" style="margin-top:14px;border:1px solid #e4b94f;display:none">
 <div class="section-title"><h3>👑 ورود اختصاصی مالک</h3><span class="hint">OWNER ACCESS</span></div>
@@ -1359,6 +1370,48 @@ render();
  };
 
  $("gsLogout").onclick=async()=>{const {error}=await client.auth.signOut();if(error){say(error.message);return}try{localStorage.removeItem("gamescope_login_method_v1");sessionStorage.removeItem("gamescope_entry_choice_v1")}catch(e){}showUser(null);say("از حساب خارج شدی.")};
+ function clearRecoveryTokensFromUrl(){
+  try{
+   const cleanUrl=new URL(window.location.href);
+   cleanUrl.hash="";
+   ["type","token","token_hash","access_token","refresh_token","error","error_description","error_code"].forEach(key=>cleanUrl.searchParams.delete(key));
+   window.history.replaceState({},document.title,cleanUrl.toString());
+  }catch(e){console.warn("Could not clean password recovery URL",e)}
+ }
+ function openPasswordRecovery(){
+  const overlay=$("psnAccountOverlay"),panel=$("gsPasswordRecoveryPanel");
+  if(!overlay||!panel)return;
+  overlay.classList.add("open");
+  panel.classList.remove("hidden");
+  $("gsNewPassword").value="";
+  $("gsConfirmNewPassword").value="";
+  $("gsPasswordRecoveryStatus").textContent="لینک بازیابی تأیید شد. رمز جدید را وارد و ذخیره کن.";
+  setTimeout(()=>$("gsNewPassword")?.focus(),80);
+ }
+ $("gsSaveNewPassword").onclick=async()=>{
+  const password=$("gsNewPassword").value,confirmation=$("gsConfirmNewPassword").value;
+  const button=$("gsSaveNewPassword"),status=$("gsPasswordRecoveryStatus");
+  if(password.length<8){status.textContent="رمز جدید باید حداقل ۸ کاراکتر داشته باشد.";return}
+  if(password!==confirmation){status.textContent="تکرار رمز با رمز جدید یکسان نیست.";return}
+  button.disabled=true;button.textContent="در حال ذخیره…";status.textContent="در حال ثبت رمز جدید در حساب امن…";
+  try{
+   const {data,error}=await client.auth.updateUser({password});
+   if(error)throw error;
+   $("gsPasswordRecoveryPanel").classList.add("hidden");
+   clearRecoveryTokensFromUrl();
+   status.textContent="رمز عبور با موفقیت تغییر کرد. اکنون می‌توانی با رمز جدید وارد شوی.";
+   say("رمز عبور با موفقیت تغییر کرد.");
+   if(data?.user)showUser(data.user);
+  }catch(error){
+   status.textContent="تغییر رمز انجام نشد: "+(error?.message||"خطای نامشخص")+"؛ لینک بازیابی ممکن است منقضی شده باشد.";
+  }finally{
+   button.disabled=false;button.textContent="ذخیره رمز جدید";
+  }
+ };
+ $("gsCancelPasswordRecovery").onclick=()=>{
+  $("gsPasswordRecoveryPanel").classList.add("hidden");
+  $("gsPasswordRecoveryStatus").textContent="فرم بازیابی بسته شد. برای تعیین دوباره رمز، یک لینک بازیابی جدید درخواست کن.";
+ };
  const settingsOverlay=$("gsSettingsOverlay");
  function closeGsSettings(){settingsOverlay?.classList.remove("open")}
  $("openGsSettings").addEventListener("click",()=>{updateSettingsAccount(currentUser);settingsOverlay.classList.add("open")});
@@ -1367,10 +1420,11 @@ render();
  settingsOverlay.addEventListener("click",e=>{if(e.target===settingsOverlay)closeGsSettings()});
  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&settingsOverlay?.classList.contains("open"))closeGsSettings()});
  $("gsSettingsOpenAccount").addEventListener("click",()=>{closeGsSettings();$("openPsnAccount").click()});
- client.auth.onAuthStateChange((event,session)=>{if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
+ client.auth.onAuthStateChange((event,session)=>{if(event==="PASSWORD_RECOVERY")openPasswordRecovery();if(session?.user){showUser(session.user);if(event==="SIGNED_IN"||event==="INITIAL_SESSION")setTimeout(()=>{refreshOwnerState(session.user);syncDown()},0)}else showUser(null)});
  client.auth.getSession().then(async({data})=>{if(data.session){showUser(data.session.user);await refreshOwnerState(data.session.user);syncDown()}else showUser(null)});
  loadGlobalCatalog().catch(e=>console.warn("Public catalog load failed",e));loadSiteSettings().catch(e=>console.warn("Public site settings load failed",e));window.gamescopeLoadLatestUpdateReport?.();setInterval(()=>{if(document.visibilityState==="visible"&&window.gamescopeLoadLatestUpdateReport)window.gamescopeLoadLatestUpdateReport();},5*60*1000);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")window.gamescopeLoadLatestUpdateReport?.()});paintResendCooldown();
- const callbackParams=new URLSearchParams(window.location.search),callbackHashParams=new URLSearchParams(window.location.hash.replace(/^#/,""));const callbackError=callbackParams.get("error_description")||callbackParams.get("error")||callbackHashParams.get("error_description")||callbackHashParams.get("error");
+ const callbackParams=new URLSearchParams(window.location.search),callbackHashParams=new URLSearchParams(window.location.hash.replace(/^#/,""));
+ if(callbackHashParams.get("type")==="recovery"||callbackParams.get("type")==="recovery")setTimeout(openPasswordRecovery,0);const callbackError=callbackParams.get("error_description")||callbackParams.get("error")||callbackHashParams.get("error_description")||callbackHashParams.get("error");
  if(callbackError){
   $("gsResendConfirmation").classList.remove("hidden");
   const e=String(callbackError).replace(/\+/g," ");
