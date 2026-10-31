@@ -275,7 +275,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
     const idRows: any[] = [];
     const titleRows: any[] = [];
     for (let offset = 0; offset < ids.length; offset += 100) {
-      const chunk = ids.slice(offset, offset + 100).map(String);
+      const chunk = ids.slice(offset, offset + 100).map((appid) => "steam_" + appid);
       const rows = await restRequest(
         "site_catalog?select=*&id=" + encodeURIComponent(pgIn(chunk)),
       );
@@ -309,7 +309,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       if (sameTitle && String(sameTitle.id) !== catalogId) {
         if (sameTitle.is_hidden) continue;
         const currentPlatforms = String(sameTitle.platforms ?? "");
-        const hasPc = /\\bpc\\b/i.test(currentPlatforms);
+        const hasPc = /\bpc\b/i.test(currentPlatforms);
         const next = {
           ...sameTitle,
           platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
@@ -339,6 +339,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
           updated_at: nowIso,
         };
         catalogWrites.set(catalogId, row);
+        byTitle.set(normalizeName(app.name), row);
         if (existingById) result.updated++;
         else result.added++;
         if (!existingById && result.items.length < MAX_REPORT_ITEMS) {
@@ -361,7 +362,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
     }
 
     // Advance the page only after its catalogue rows have been safely stored.
-    const nextPage = discovered.length >= 1000 ? page + 1 : 0;
+    const nextPage = sourceApps.length >= 1000 ? page + 1 : 0;
     await restRequest("steam_sync_state?id=eq.main", {
       method: "PATCH",
       headers: { "Prefer": "return=minimal" },
@@ -473,7 +474,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
 
       if (sameTitle && String(sameTitle.id) !== catalogId && !sameTitle.is_hidden) {
         const currentPlatforms = String(sameTitle.platforms ?? "");
-        const hasPc = /\\bpc\\b/i.test(currentPlatforms);
+        const hasPc = /\bpc\b/i.test(currentPlatforms);
         await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
           method: "PATCH",
           headers: { "Prefer": "return=minimal" },
