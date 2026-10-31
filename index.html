@@ -595,7 +595,7 @@ function phantomBladeZeroOfficialRecord(){
   id:-20261029,slug:"phantom-blade-zero",gamescopeOfficial:true,name:"Phantom Blade Zero",
   released:"2026-10-29",rating:null,metacritic:null,background_image:"",
   genres:[{name:"Action"}],
-  platforms:[{platform:{name:"PlayStation 5"}}],
+  platforms:[{platform:{name:"PlayStation 5"}},{platform:{name:"PC"}}],
   publishers:[{name:"S-GAME Publishing"}],developers:[{name:"S-Game"}],
   storeUrl:"https://store.playstation.com/en-us/product/UB2134-PPSA34579_00-0622032276386943/",
   officialUrl:"https://www.playstation.com/en-us/games/phantom-blade-zero/"
@@ -734,7 +734,7 @@ async function loadOnlineGames({query="",append=false}={}){
      name:"Phantom Blade Zero",
      released:actual.released||officialPhantom.released,
      genres:actual.genres&&actual.genres.length?actual.genres:officialPhantom.genres,
-     platforms:actual.platforms&&actual.platforms.length?actual.platforms:officialPhantom.platforms,
+     platforms:[...new Set([...onlinePlatformLabels(actual),...onlinePlatformLabels(officialPhantom)])].map(name=>({platform:{name}})),
      publishers:actual.publishers&&actual.publishers.length?actual.publishers:officialPhantom.publishers,
      developers:actual.developers&&actual.developers.length?actual.developers:officialPhantom.developers,
      storeUrl:officialPhantom.storeUrl,
@@ -890,6 +890,25 @@ async function runFullUpdate({silent=false}={}){
   document.getElementById("onlineResults").classList.remove("hidden");
   renderOnlineResults([...recentGames,...futureGames],false);
   let note="بررسی تمام شد: "+futureGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی آینده و "+recentGames.length.toLocaleString("fa-IR")+" نتیجهٔ بازی منتشرشدهٔ اخیر از RAWG با فیلتر PlayStation، PC و Xbox دریافت شد (حداکثر ۵ صفحه برای هر دسته). "+(globalSync.published?"نتایج با کاتالوگ عمومی پایگاه داده مقایسه و ذخیره شدند.":previous?"نتایج آنلاین با بررسی قبلی همین مرورگر مقایسه شدند؛ این مقایسه محلی است، نه تغییر قطعی سایت.":"این اولین بررسی محلی است؛ نتایج دریافت‌شده به‌عنوان مبنا ذخیره شدند.")+" این بررسی همهٔ بازی‌های دنیا یا همهٔ فروشگاه‌ها را تضمین نمی‌کند.";
+  setUpdateProgress(94,"۹۴٪ — دریافت گزارش آخرین همگام‌سازی سراسری");
+  let serverReport=null;
+  try{
+   const {data,error}=await client.from("site_update_runs")
+    .select("run_at,status,added_count,updated_count,note,items")
+    .like("note","همگام‌سازی مستقل سرور%")
+    .order("run_at",{ascending:false}).limit(1).maybeSingle();
+   if(!error&&data)serverReport=data;
+  }catch(reportError){console.warn("Latest shared catalog report unavailable:",reportError)}
+  if(serverReport){
+   const serverDate=new Date(serverReport.run_at);
+   const serverItems=(Array.isArray(serverReport.items)?serverReport.items:[])
+    .filter(item=>item&&typeof item.title==="string")
+    .map(item=>({kind:item.kind==="new"?"new":"base",title:item.title,text:String(item.text||"")}));
+   if(serverItems.length)changes.unshift(...serverItems);
+   const state=serverReport.status==="success"?"موفق":serverReport.status==="partial"?"بخشی از منابع با خطا":"ناموفق";
+   note+=" آخرین اجرای خودکار سرور: "+serverDate.toLocaleString("fa-IR")+"، وضعیت "+state+"؛ "+Number(serverReport.added_count||0).toLocaleString("fa-IR")+" بازی جدید و "+Number(serverReport.updated_count||0).toLocaleString("fa-IR")+" بازی تکمیل/به‌روزرسانی شد.";
+   if(serverReport.note)note+=" گزارش سرور: "+serverReport.note;
+  }
   if(globalSync.published)note+=" کاتالوگ عمومی هم ذخیره شد: "+(globalSync.added||0)+" بازی جدید و "+(globalSync.updated||0)+" بازی به‌روزشده.";
   else if(globalSync.error)note+=" اما ذخیرهٔ عمومی خطا داد: "+globalSync.error;
   else note+=" این بررسی فقط فهرست آنلاین را تازه کرد؛ انتشار تغییرات سراسری فقط با ورود مالک انجام می‌شود.";
