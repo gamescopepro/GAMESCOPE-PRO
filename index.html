@@ -362,6 +362,15 @@ function isSupportedPlatformName(value){
 function gameHasSupportedPlatform(game){
  return Array.isArray(game?.platforms)&&game.platforms.some(item=>isSupportedPlatformName(item?.platform?.name||item?.name||""));
 }
+function gameStoreLinks(game){
+ const names=(Array.isArray(game?.platforms)?game.platforms:[]).map(item=>String(item?.platform?.name||item?.name||"").trim().toLowerCase());
+ const title=encodeURIComponent(String(game?.name||""));
+ const links=[];
+ if(names.some(name=>/^(playstation(?:\\s|$)|ps\\s?(?:1|2|3|4|5)\\b|psp\\b|ps vita\\b)/i.test(name)))links.push({label:"PlayStation Store",url:"https://store.playstation.com/en-us/search/"+title});
+ if(names.some(name=>["pc","windows","microsoft windows","linux","macos","mac os","steam deck"].includes(name)))links.push({label:"Steam",url:"https://store.steampowered.com/search/?term="+title});
+ if(names.some(name=>/^xbox(?:\\s|$)/i.test(name)))links.push({label:"Xbox Store",url:"https://www.xbox.com/en-US/search?q="+title});
+ return links;
+}
 function siteCatalogRowToRawg(row){
  const match=/^rawg_([0-9]+)$/.exec(String(row?.id||""));
  if(!match||!String(row?.title||"").trim())return null;
@@ -407,14 +416,14 @@ function renderOnlineResults(results,append=false){
   const imageUrl=typeof g.background_image==="string"?g.background_image:"";
   const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">':"";
   const release=esc(g.released||"تاریخ انتشار نامشخص"),rating=Number.isFinite(Number(g.rating))&&g.rating?Number(g.rating).toFixed(1):"—";
-  const storeLink=g.storeUrl||'https://store.playstation.com/en-us/search/'+encodeURIComponent(g.name||'');
+  const storeLinksHtml=gameStoreLinks(g).map(link=>'<a class="secondary" href="'+link.url+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;flex:1 1 auto;padding:9px 10px;border-radius:10px;text-decoration:none;color:inherit;text-align:center">'+link.label+' ↗</a>').join("");
   const companies=[...(g.publishers||[]).map(x=>x.name),...(g.developers||[]).map(x=>x.name)].filter(Boolean);
   const company=[...new Set(companies)].slice(0,2).join(' • ')||'شرکت سازنده/ناشر در RAWG ثبت نشده';
   const companyInitial=esc((companies[0]||'🎮').slice(0,1).toUpperCase());
   const saved=userGames.find(x=>String(x.rawgId||"")===String(g.id)||String(x.id)==="rawg_"+String(g.id)||normalizeGameName(x.title)===normalizeGameName(g.name||""));
   const addLabel=saved?(saved.owned?"✓ در کتابخانه":"✓ در بازی‌های من"):"＋ افزودن به بازی‌های من";
   const coverClass=imageUrl?"has-cover":"cover-missing";
-  return '<article class="card" data-online-game-id="'+Number(g.id)+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز RAWG: <b class="score">'+rating+'</b> / 5</div><div class="card-actions"><button onclick="addRawgGame('+Number(g.id)+')">'+addLabel+'</button><a class="secondary" href="'+storeLink+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:9px 12px;border-radius:10px;text-decoration:none;color:inherit">جست‌وجو در PS Store ↗</a></div></div></article>' 
+  return '<article class="card" data-online-game-id="'+Number(g.id)+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+'</div><div class="meta">امتیاز RAWG: <b class="score">'+rating+'</b> / 5</div><div class="card-actions" style="flex-wrap:wrap"><button onclick="addRawgGame('+Number(g.id)+')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>' 
  }).join("");
  if(!append)box.innerHTML="";
  box.insertAdjacentHTML("beforeend",html);
