@@ -513,7 +513,8 @@ async function mergeSupplementalGame(
         String(row?.id) !== sourceId &&
         !String(row?.id ?? "").startsWith("steam_") &&
         !String(row?.id ?? "").startsWith("gog_") &&
-        !String(row?.id ?? "").startsWith("igdb_"),
+        !String(row?.id ?? "").startsWith("igdb_") &&
+        !String(row?.id ?? "").startsWith("thegamesdb_"),
       )
     : null;
   const target = sameTitle || sourceExisting;
@@ -553,6 +554,215 @@ async function mergeSupplementalGame(
   if (!changed) return "unchanged";
   await upsertCatalogRows([next]);
   return target ? "updated" : "added";
+}
+
+
+type TheGamesDbSyncResult = {
+  enabled: boolean;
+  skipped?: boolean;
+  checked: number;
+  discovered: number;
+  added: number;
+  updated: number;
+  remainingMonthlyAllowance: number | null;
+  nextCheckAt: string | null;
+  errors: string[];
+  items: Array<{ kind: string; title: string; text: string }>;
+};
+
+const THEGAMESDB_MIN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const THEGAMESDB_LOW_ALLOWANCE_GUARD = 20;
+
+function theGamesDbPlatformLabel(value: unknown): string | null {
+  const name = String(value ?? "").trim().replace(/^(sony|microsoft)\s+/i, "");
+  if (!name) return null;
+  const label = canonicalPlatformLabel(name);
+  return label && isSupportedPlatformName(label) ? label : null;
+}
+
+async function syncTheGamesDbCatalog(
+  rows: CatalogRow[],
+  now: Date,
+): Promise<TheGamesDbSyncResult> {
+  const result: TheGamesDbSyncResult = {
+    enabled: false, skipped: true, checked: 0, discovered: 0,
+    added: 0, updated: 0, remainingMonthlyAllowance: null,
+    nextCheckAt: null, errors: [], items: [],
+  };
+
+  const apiKey = Deno.env.get("THEGAMESDB_API_KEY") ?? "";
+  if (!apiKey) return result;
+
+  result.enabled = true;
+  result.skipped = false;
+
+  const stateRows = await restRequest(
+    "steam_sync_state?id=eq.main&select=thegamesdb_cursor,last_thegamesdb_fetch_at,thegamesdb_pause_until,thegamesdb_remaining_allowance",
+  );
+  const state = Array.isArray(stateRows) ? stateRows[0] : null;
+  const nowMs = now.getTime();
+  const pauseUntil = state?.thegamesdb_pause_until
+    ? Date.parse(String(state.thegamesdb_pause_until))
+    : 0;
+  if (Number.isFinite(pauseUntil) && pauseUntil > nowMs) {
+    result.skipped = true;
+    result.nextCheckAt = new Date(pauseUntil).toISOString();
+    return result;
+  }
+
+  const lastFetchAt = state?.last_thegamesdb_fetch_at
+    ? Date.parse(String(state.last_thegamesdb_fetch_at))
+    : 0;
+  if (Number.isFinite(lastFetchAt) && nowMs - lastFetchAt < THEGAMESDB_MIN_INTERVAL_MS) {
+    result.skipped = true;
+    result.nextCheckAt = new Date(lastFetchAt + THEGAMESDB_MIN_INTERVAL_MS).toISOString();
+    return result;
+  }
+
+  // Enrich existing PS / Xbox / PC rows only; exact-title matching below
+  // prevents fuzzy search results from being merged into the wrong game.
+  const candidates = rows
+    .filter((row) => {
+      const platforms = String(row.platforms ?? "").split(/[،,]/).map((item) => item.trim());
+      const supported = platforms.some(isSupportedPlatformName);
+      const incomplete = !row.release_date ||
+        !String(row.publisher ?? "").trim() ||
+        !String(row.genre ?? "").trim() ||
+        row.genre === "ژانر نامشخص";
+      return supported && !row.is_hidden && incomplete;
+    })
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  if (!candidates.length) {
+    result.skipped = true;
+    return result;
+  }
+
+  const cursor = String(state?.thegamesdb_cursor ?? "");
+  const selected = candidates.find((row) => String(row.id) > cursor) ?? candidates[0];
+  const title = String(selected.title ?? "").trim();
+  if (!title) {
+    result.skipped = true;
+    return result;
+  }
+
+  const target = new URL("https://api.thegamesdb.net/v1.1/Games/ByGameName");
+  target.searchParams.set("apikey", apiKey);
+  target.searchParams.set("name", title);
+  target.searchParams.set("fields", "publishers,developers,genres,platform");
+  target.searchParams.set("include", "platform");
+  target.searchParams.set("page", "1");
+
+  let payload: any;
+  try {
+    payload = await fetchJson(target.toString(), 15000);
+  } catch (error) {
+    // Back off after upstream failures, including quota or invalid-key HTTP 403.
+    await restRequest("steam_sync_state?id=eq.main", {
+      method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        last_thegamesdb_fetch_at: now.toISOString(),
+        thegamesdb_pause_until: new Date(nowMs + 24 * 60 * 60 * 1000).toISOString(),
+        updated_at: now.toISOString(),
+      }),
+    });
+    throw error;
+  }
+
+  if (payload?.code && Number(payload.code) !== 200) {
+    throw new Error("TheGamesDB returned API code " + String(payload.code) + ".");
+  }
+
+  const remainingValue = payload?.remaining_monthly_allowance;
+  const remaining = remainingValue === null || remainingValue === undefined
+    ? NaN
+    : Number(remainingValue);
+  result.remainingMonthlyAllowance = Number.isFinite(remaining) ? remaining : null;
+
+  const rawGames = payload?.data?.games;
+  const games: any[] = Array.isArray(rawGames)
+    ? rawGames
+    : rawGames && typeof rawGames === "object"
+      ? Object.values(rawGames)
+      : [];
+  const platformMap = payload?.include?.platform?.data ?? {};
+  const exactGames = games.filter((game) =>
+    normalizeName(game?.game_title ?? game?.name) === normalizeName(title)
+  );
+
+  result.checked = 1;
+  result.discovered = exactGames.length;
+
+  const platformLabels = new Set<string>();
+  const releaseDates: string[] = [];
+  for (const game of exactGames) {
+    const rawPlatformIds = Array.isArray(game?.platform)
+      ? game.platform
+      : game?.platform === undefined || game?.platform === null
+        ? []
+        : [game.platform];
+    for (const platformId of rawPlatformIds) {
+      const platform = platformMap?.[String(platformId)];
+      const label = theGamesDbPlatformLabel(platform?.name);
+      if (label) platformLabels.add(label);
+      const directLabel = theGamesDbPlatformLabel(platformId);
+      if (directLabel) platformLabels.add(directLabel);
+    }
+    const date = releaseDateFromUnknown(game?.release_date);
+    if (date) releaseDates.push(date);
+  }
+
+  if (exactGames.length) {
+    const today = dateString(now);
+    const futureDates = releaseDates.filter((date) => date > today).sort();
+    const releaseDate = futureDates[0] ?? releaseDates.sort()[0] ?? null;
+    const releaseStatus = releaseDate
+      ? (releaseDate > today ? "upcoming" : "released")
+      : "unknown";
+    // Stable source ID: repeated platform editions of the same title share one
+    // supplemental record and never create per-platform duplicates.
+    const slug = normalizeName(title).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 100);
+    const sourceId = "thegamesdb_" + (slug || "matched_title");
+    const mergedPlatforms = platformLabels.size
+      ? [...platformLabels].join("، ")
+      : String(selected.platforms ?? "نامشخص");
+    const outcome = await mergeSupplementalGame(
+      sourceId, title, null, mergedPlatforms, null, releaseDate, releaseStatus, null,
+    );
+    if (outcome === "added") {
+      result.added++;
+      result.items.push({
+        kind: "new", title,
+        text: "اطلاعات پلتفرم/تاریخ انتشار از TheGamesDB به کاتالوگ تکمیلی اضافه شد.",
+      });
+    } else if (outcome === "updated") {
+      result.updated++;
+      result.items.push({
+        kind: "updated", title,
+        text: "پلتفرم‌ها یا تاریخ انتشار با دادهٔ TheGamesDB تکمیل شد.",
+      });
+    }
+  }
+
+  const nextPauseUntil = result.remainingMonthlyAllowance !== null &&
+      result.remainingMonthlyAllowance <= THEGAMESDB_LOW_ALLOWANCE_GUARD
+    ? new Date(nowMs + 24 * 60 * 60 * 1000).toISOString()
+    : null;
+  await restRequest("steam_sync_state?id=eq.main", {
+    method: "PATCH",
+    headers: { "Prefer": "return=minimal" },
+    body: JSON.stringify({
+      thegamesdb_cursor: String(selected.id),
+      last_thegamesdb_fetch_at: now.toISOString(),
+      thegamesdb_pause_until: nextPauseUntil,
+      thegamesdb_remaining_allowance: result.remainingMonthlyAllowance,
+      updated_at: now.toISOString(),
+    }),
+  });
+  result.nextCheckAt = nextPauseUntil ??
+    new Date(nowMs + THEGAMESDB_MIN_INTERVAL_MS).toISOString();
+  return result;
 }
 
 async function syncGogCatalog(): Promise<SupplementalSyncResult> {
@@ -1396,6 +1606,21 @@ Deno.serve(async (req: Request) => {
       };
     }
 
+
+    let theGamesDbResult: TheGamesDbSyncResult = {
+      enabled: false, skipped: true, checked: 0, discovered: 0,
+      added: 0, updated: 0, remainingMonthlyAllowance: null,
+      nextCheckAt: null, errors: [], items: [],
+    };
+    try {
+      theGamesDbResult = await syncTheGamesDbCatalog(existingRows, now);
+      changedItems.push(...theGamesDbResult.items);
+    } catch (error) {
+      theGamesDbResult.errors.push(
+        error instanceof Error ? error.message : "TheGamesDB sync failed",
+      );
+    }
+
     // The currently documented public GOG listing endpoint returned HTTP 400
     // during live verification. Keep it disabled until its current contract can be
     // confirmed; this prevents a known-broken provider from marking every run partial.
@@ -1413,17 +1638,22 @@ Deno.serve(async (req: Request) => {
       igdbResult.errors.push(error instanceof Error ? error.message : "IGDB sync failed");
     }
 
-    const errors = [futureResult.error, recentResult.error, playstationResult.error, xboxResult.error, ...rawgBackfillResult.errors, ...steamResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
-    const activeSources = 1 + (steamResult.enabled ? 1 : 0) + (gogResult.enabled ? 1 : 0) + (igdbResult.enabled ? 1 : 0);
-    const successfulSources = (futureResult.error ? 0 : 1) + (recentResult.error ? 0 : 1) + (steamResult.errors.length ? 0 : 1) + (gogResult.errors.length ? 0 : 1) + (igdbResult.errors.length ? 0 : (igdbResult.enabled ? 1 : 0));
-    const bothEmptyDueToErrors = successfulSources === 0 && futureGames.length === 0 && recentGames.length === 0 && playstationGames.length === 0 && xboxGames.length === 0 && steamResult.processed === 0 && gogResult.discovered === 0;
+    const errors = [futureResult.error, recentResult.error, playstationResult.error, xboxResult.error, ...rawgBackfillResult.errors, ...steamResult.errors, ...theGamesDbResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
+    const activeSources = 1 + (steamResult.enabled ? 1 : 0) + (theGamesDbResult.enabled ? 1 : 0) + (gogResult.enabled ? 1 : 0) + (igdbResult.enabled ? 1 : 0);
+    const successfulSources = (futureResult.error ? 0 : 1) + (recentResult.error ? 0 : 1) + (steamResult.errors.length ? 0 : 1) + (theGamesDbResult.errors.length ? 0 : (theGamesDbResult.enabled ? 1 : 0)) + (gogResult.errors.length ? 0 : 1) + (igdbResult.errors.length ? 0 : (igdbResult.enabled ? 1 : 0));
+    const bothEmptyDueToErrors = successfulSources === 0 && futureGames.length === 0 && recentGames.length === 0 && playstationGames.length === 0 && xboxGames.length === 0 && steamResult.processed === 0 && theGamesDbResult.checked === 0 && gogResult.discovered === 0;
     const status: "success" | "partial" | "failed" = bothEmptyDueToErrors ? "failed" : errors.length ? "partial" : "success";
-    const totalAdded = added + steamResult.added + gogResult.added + igdbResult.added;
-    const totalUpdated = updated + rawgBackfillResult.updated + steamResult.updated + gogResult.updated + igdbResult.updated;
+    const totalAdded = added + steamResult.added + theGamesDbResult.added + gogResult.added + igdbResult.added;
+    const totalUpdated = updated + rawgBackfillResult.updated + steamResult.updated + theGamesDbResult.updated + gogResult.updated + igdbResult.updated;
     const errorText = errors.length ? " خطای منبع: " + errors.join(" | ") : "";
     const steamText = " SteamSpy: " + steamResult.discovered +
       " مورد کشف شد؛ " + steamResult.queued + " شناسهٔ فروشگاه در صف قرار گرفت و " +
       steamResult.processed + " مورد بررسی شد (" + steamResult.added + " جدید، " + steamResult.updated + " تکمیل‌شده).";
+    const theGamesDbText = !theGamesDbResult.enabled
+      ? " TheGamesDB هنوز فعال نیست؛ پس از ثبت THEGAMESDB_API_KEY در Secrets، تکمیل تدریجی فراداده با سقف مصرف محافظت‌شده آغاز می‌شود."
+      : " TheGamesDB: " + theGamesDbResult.checked + " عنوان بررسی شد (" + theGamesDbResult.added + " جدید، " + theGamesDbResult.updated + " تکمیل‌شده)." +
+        (theGamesDbResult.remainingMonthlyAllowance !== null ? " سهمیهٔ ماهانهٔ باقی‌مانده: " + theGamesDbResult.remainingMonthlyAllowance + "." : "") +
+        (theGamesDbResult.skipped ? " این نوبت به‌دلیل فاصلهٔ زمانی/سهمیه از درخواست صرف‌نظر کرد." : "");
     const gogText = " GOG فعلاً غیرفعال است؛ رابط عمومی هنگام تست پاسخ HTTP 400 داد و تا تأیید سازگاری دوباره داده‌ای از آن وارد نمی‌شود.";
     const igdbText = igdbResult.enabled
       ? " IGDB: " + igdbResult.discovered + " نتیجه بررسی شد (" + igdbResult.added + " جدید، " + igdbResult.updated + " تکمیل‌شده)."
@@ -1434,7 +1664,7 @@ Deno.serve(async (req: Request) => {
       " بازی منتشرشدهٔ اخیر را دریافت کرد؛ اسکن پلتفرم‌ها: PlayStation " + playstationGames.length +
       " بازی در " + playstationResult.pages + " صفحه (صفحه بعدی " + playstationResult.nextPage + ") و Xbox " +
       xboxGames.length + " بازی در " + xboxResult.pages + " صفحه (صفحه بعدی " + xboxResult.nextPage + ")." +
-      steamText + gogText + igdbText +
+      steamText + theGamesDbText + gogText + igdbText +
       " RAWG metadata backfill: " + rawgBackfillResult.checked + " رکورد بررسی شد و " + rawgBackfillResult.updated + " رکورد تکمیل شد." +
       " مجموع " + totalAdded + " بازی جدید و " + totalUpdated + " بازی تکمیل‌شده." +
       " این بررسی پوشش کامل همهٔ بازی‌های دنیا یا تمام فروشگاه‌ها را تضمین نمی‌کند." + errorText;
@@ -1457,6 +1687,17 @@ Deno.serve(async (req: Request) => {
           page: steamResult.page, discovered: steamResult.discovered,
           queued: steamResult.queued, processed: steamResult.processed,
           added: steamResult.added, updated: steamResult.updated, errors: steamResult.errors.length,
+        },
+        thegamesdb: {
+          enabled: theGamesDbResult.enabled,
+          skipped: Boolean(theGamesDbResult.skipped),
+          checked: theGamesDbResult.checked,
+          discovered: theGamesDbResult.discovered,
+          added: theGamesDbResult.added,
+          updated: theGamesDbResult.updated,
+          remaining_monthly_allowance: theGamesDbResult.remainingMonthlyAllowance,
+          next_check_at: theGamesDbResult.nextCheckAt,
+          errors: theGamesDbResult.errors.length,
         },
         gog: { enabled: gogResult.enabled, discovered: gogResult.discovered, added: gogResult.added, updated: gogResult.updated, errors: gogResult.errors.length },
         igdb: { enabled: igdbResult.enabled, skipped: Boolean(igdbResult.skipped), discovered: igdbResult.discovered, added: igdbResult.added, updated: igdbResult.updated, errors: igdbResult.errors.length },
