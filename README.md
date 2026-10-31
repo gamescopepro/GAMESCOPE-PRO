@@ -10,15 +10,13 @@ Project information:
 - [Frequently asked questions](https://gamescopepro.github.io/GAMESCOPE-PRO/faq/)
 - [Data sources and catalog updates](https://gamescopepro.github.io/GAMESCOPE-PRO/data-sources/)
 
-## Discover games across platforms
+## Discover games across PlayStation, PC and Xbox
 
 Explore video games for:
 
-- PC
 - PlayStation
+- PC
 - Xbox
-- Nintendo
-- Mobile
 
 Search for game titles, browse available platforms, check release dates, discover upcoming games, and review developer or publisher information when available.
 
@@ -35,4 +33,4 @@ Search for game titles, browse available platforms, check release dates, discove
 
 The catalog uses RAWG as an external game-information source. Coverage, availability and accuracy depend on the upstream data provider. The public website is hosted with GitHub Pages and uses Supabase for account and catalog services.
 
-GAMESCOPE PRO is an independent community project and is not affiliated with Sony Interactive Entertainment, Microsoft, Nintendo, Valve or RAWG.
+GAMESCOPE PRO is an independent community project and is not affiliated with Sony Interactive Entertainment, Microsoft, Valve or RAWG.
