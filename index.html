@@ -1047,7 +1047,7 @@ render();
   const {data,error}=await client.from("site_catalog").select("*").order("title");
   if(error){adminStatus("خطا در دریافت کاتالوگ: "+error.message);return false;}
   adminCatalogRows=data||[];
-  window.__gamescopePublicCatalogRows=adminCatalogRows.filter(row=>!row.is_hidden);
+  window.__gamescopePublicCatalogRows=adminCatalogRows.filter(row=>!row.is_hidden&&String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
   window.__gamescopePublicCatalogLoadedAt=Date.now();
   render();renderAdminList();return true;
  }
@@ -1057,7 +1057,7 @@ render();
   if(!force&&Array.isArray(cached)&&Date.now()-loadedAt<5*60*1000)return cached;
   const {data,error}=await client.from("site_catalog").select("*").eq("is_hidden",false).order("title");
   if(error)throw error;
-  window.__gamescopePublicCatalogRows=Array.isArray(data)?data:[];
+  window.__gamescopePublicCatalogRows=(Array.isArray(data)?data:[]).filter(row=>String(row.platforms||"").split(/[،,]/).some(isSupportedPlatformName));
   window.__gamescopePublicCatalogLoadedAt=Date.now();
   return window.__gamescopePublicCatalogRows;
  };
@@ -1069,7 +1069,7 @@ render();
   const today=new Date().toISOString().slice(0,10),unique=new Map();
   (futureGames||[]).forEach(g=>unique.set(String(g.id),{game:g}));
   (recentGames||[]).forEach(g=>unique.set(String(g.id),{game:g}));
-  const candidates=[...unique.values()].map(x=>x.game).filter(g=>g&&g.id&&g.name);
+  const candidates=[...unique.values()].map(x=>x.game).filter(g=>g&&g.id&&g.name&&gameHasSupportedPlatform(g));
   const batch=[],changeItems=[];let added=0,updated=0,detailRequests=0;
   for(const game of candidates){
    const rawId="rawg_"+String(game.id),existing=byId.get(rawId)||byTitle.get(normalizeGameName(game.name));
@@ -1172,12 +1172,13 @@ render();
  });
  $("gsAdminSaveGame").addEventListener("click",async()=>{
   if(!isOwner){adminStatus("تنها مالک تأییدشده اجازهٔ ذخیره دارد.");return;}
-  const title=$("gsAdminGameTitle").value.trim(),url=$("gsAdminStoreUrl").value.trim(),ct=$("gsAdminGameCritic").value.trim();
+  const title=$("gsAdminGameTitle").value.trim(),url=$("gsAdminStoreUrl").value.trim(),ct=$("gsAdminGameCritic").value.trim(),platformsText=$("gsAdminPlatforms").value.trim();
   if(!title){adminStatus("نام بازی را وارد کن.");$("gsAdminGameTitle").focus();return;}
+  if(!platformsText||!platformsText.split(/[،,]/).some(isSupportedPlatformName)){adminStatus("این کاتالوگ فقط بازی‌های PlayStation، PC و Xbox را می‌پذیرد؛ پلتفرم معتبر را وارد کن.");$("gsAdminPlatforms").focus();return;}
   if(ct!==""&&(!Number.isFinite(Number(ct))||Number(ct)<0||Number(ct)>10)){adminStatus("امتیاز باید بین صفر تا ده باشد.");return;}
   if(url){try{const u=new URL(url);if(!["http:","https:"].includes(u.protocol))throw Error();}catch(e){adminStatus("لینک فروشگاه باید با https:// یا http:// شروع شود.");return;}}
   const old=adminEditingRecord;
-  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",platforms:$("gsAdminPlatforms").value.trim()||"PS5",emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
+  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",platforms:platformsText,emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
   const b=$("gsAdminSaveGame");b.disabled=true;const {error}=await client.from("site_catalog").upsert(row,{onConflict:"id"});b.disabled=false;
   if(error){adminStatus("ذخیره در پایگاه داده ناموفق بود: "+error.message);return;}
   clearAdminForm();await loadGlobalCatalog();adminStatus(old?"ویرایش برای همه ذخیره شد.":"بازی جدید به کاتالوگ عمومی همه اضافه شد.");
