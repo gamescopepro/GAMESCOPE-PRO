@@ -104,21 +104,21 @@ function gameHasSupportedPlatform(game: RawgGame): boolean {
 
 function canonicalPlatformLabel(value: unknown): string | null {
   const name = String(value ?? "").trim();
-  const lower = name.toLowerCase().replace(/\\s+/g, " ");
+  const lower = name.toLowerCase().replace(/\s+/g, " ");
   if (!name) return null;
   if (["pc", "windows", "microsoft windows", "linux", "macos", "mac os", "steam deck"].includes(lower)) return "PC";
-  if (/^(playstation\\s*5|ps\\s*5)\\b/i.test(name)) return "PlayStation 5";
-  if (/^(playstation\\s*4|ps\\s*4)\\b/i.test(name)) return "PlayStation 4";
-  if (/^(playstation\\s*3|ps\\s*3)\\b/i.test(name)) return "PlayStation 3";
-  if (/^(playstation\\s*2|ps\\s*2)\\b/i.test(name)) return "PlayStation 2";
-  if (/^playstation\\s*1\\b|^ps\\s*1\\b/i.test(name)) return "PlayStation";
-  if (/^playstation vita$|^ps vita$/i.test(name)) return "PlayStation Vita";
-  if (/^psp\\b/i.test(name)) return "PSP";
-  if (/^playstation(?:\\s|$)/i.test(name)) return name;
-  if (/^xbox.*series|^series.*xbox/i.test(name)) return "Xbox Series X|S";
-  if (/^xbox.*one|^one.*xbox/i.test(name)) return "Xbox One";
-  if (/^xbox.*360|^xbox 360/i.test(name)) return "Xbox 360";
-  if (/^xbox(?:\\s|$)/i.test(name)) return "Xbox";
+  if (/^(playstation\s*5|ps\s*5)\b/.test(lower)) return "PlayStation 5";
+  if (/^(playstation\s*4|ps\s*4)\b/.test(lower)) return "PlayStation 4";
+  if (/^(playstation\s*3|ps\s*3)\b/.test(lower)) return "PlayStation 3";
+  if (/^(playstation\s*2|ps\s*2)\b/.test(lower)) return "PlayStation 2";
+  if (/^(playstation\s*1|ps\s*1)\b/.test(lower)) return "PlayStation";
+  if (/^(playstation vita|ps vita)\b/.test(lower)) return "PlayStation Vita";
+  if (/^psp\b/.test(lower)) return "PSP";
+  if (/^playstation(?:\s|$)/.test(lower)) return "PlayStation";
+  if (/^(xbox.*series|series.*xbox)/.test(lower)) return "Xbox Series X|S";
+  if (/^(xbox.*one|one.*xbox)/.test(lower)) return "Xbox One";
+  if (/^(xbox.*360)/.test(lower)) return "Xbox 360";
+  if (/^xbox(?:\s|$)/.test(lower)) return "Xbox";
   return null;
 }
 
