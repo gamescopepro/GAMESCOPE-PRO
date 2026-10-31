@@ -548,6 +548,14 @@ function pgIn(values: string[]): string {
   ).join(",") + ")";
 }
 
+async function markSteamQueueProcessed(appid: number): Promise<void> {
+  await restRequest("steam_sync_queue?appid=eq." + appid, {
+    method: "PATCH",
+    headers: { "Prefer": "return=minimal" },
+    body: JSON.stringify({ processed_at: new Date().toISOString() }),
+  });
+}
+
 async function syncSteamCatalog(): Promise<SteamSyncResult> {
   const result: SteamSyncResult = {
     enabled: true, queued: 0, processed: 0, added: 0, updated: 0,
@@ -744,7 +752,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
 
   // Enrich a small, bounded number of featured AppIDs per run to respect public storefront limits.
   const pending = await restRequest(
-    "steam_sync_queue?select=appid,last_modified&order=queued_at.asc&limit=8",
+    "steam_sync_queue?select=appid,last_modified&processed_at=is.null&order=queued_at.asc&limit=16",
   );
   for (const queued of (Array.isArray(pending) ? pending : [])) {
     const appid = Number(queued?.appid);
@@ -760,7 +768,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       const isPcGame = game?.type === "game" &&
         Boolean(pcPlatforms.windows || pcPlatforms.mac || pcPlatforms.linux);
       if (!isPcGame || !game?.name) {
-        await restRequest("steam_sync_queue?appid=eq." + appid, { method: "DELETE" });
+        await markSteamQueueProcessed(appid);
         result.processed++;
         continue;
       }
@@ -772,7 +780,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       );
       const existing = Array.isArray(existingById) ? existingById[0] : null;
       if (existing?.is_hidden) {
-        await restRequest("steam_sync_queue?appid=eq." + appid, { method: "DELETE" });
+        await markSteamQueueProcessed(appid);
         result.processed++;
         continue;
       }
@@ -860,7 +868,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
         });
       }
 
-      await restRequest("steam_sync_queue?appid=eq." + appid, { method: "DELETE" });
+      await markSteamQueueProcessed(appid);
       result.processed++;
     } catch (error) {
       result.errors.push("Steam AppID " + appid + ": " +
