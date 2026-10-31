@@ -1,8 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ALLOWED_SITE_ORIGINS = new Set([
-  "https://gamescopepro.github.io",
-  "https://sadraps595-gif.github.io"
+  "https://gamescopepro.github.io"
 ]);
 const RAWG_BASE = "https://api.rawg.io/api";
 const RATE_WINDOW_MS = 60_000;
