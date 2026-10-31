@@ -406,13 +406,13 @@ function siteCatalogRowToRawg(row){
   background_image:"",genres:row.genre?[{name:String(row.genre)}]:[],
   platforms:platformNames.map(name=>({platform:{name}})),
   publishers:publisherNames.map(name=>({name})),developers:[],
-  storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":source==="gog"?"https://www.gog.com/":"https://store.playstation.com/en-us/search/"+encodeURIComponent(String(row.title))),
+  storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":source==="gog"?"https://www.gog.com/":gameStoreLinks({name:String(row.title),platforms:platformNames.map(name=>({platform:{name}}))})[0]?.url||""),
   gamescopeCatalog:true,gamescopeOfficial:source!=="rawg",dataSource:source.toUpperCase(),releaseStatus:row.release_status||"unknown"
  };
 }
 function rawgGameObject(g){
  const gameTitle=g.name||"بازی بدون نام",customId=g.gamescopeOfficial?"official_"+String(g.slug||"game").replace(/[^a-z0-9_-]/gi,"-"):"rawg_"+g.id;
- return {id:customId,title:gameTitle,genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",platforms:Array.isArray(g.platforms)&&g.platforms.length?g.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.releaseStatus||(g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown"),storeUrl:g.storeUrl||"https://store.playstation.com/en-us/search/"+encodeURIComponent(gameTitle),owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.gamescopeOfficial?null:g.id,cover:g.background_image||""}
+ return {id:customId,title:gameTitle,genre:Array.isArray(g.genres)&&g.genres.length?g.genres.map(x=>x.name).join("، "):"ژانر نامشخص",platforms:Array.isArray(g.platforms)&&g.platforms.length?g.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5",emoji:"🎮",critic:typeof g.metacritic==="number"?Math.round(g.metacritic)/10:null,publisher:companyNames(g).join(" • "),releaseDate:g.released||"",releaseStatus:g.releaseStatus||(g.released&&g.released>new Date().toISOString().slice(0,10)?"upcoming":g.released?"released":"unknown"),storeUrl:g.storeUrl||gameStoreLinks(g)[0]?.url||"",owned:true,fav:false,status:"در فهرست علاقه‌مندی",rating:null,note:"",created:Date.now(),rawgId:g.gamescopeOfficial?null:g.id,cover:g.background_image||""}
 }
 function addRawgGame(id){
  const g=onlineCache.get(String(id));if(!g){toast("اطلاعات بازی در دسترس نیست");return}
