@@ -893,11 +893,10 @@ async function runFullUpdate({silent=false}={}){
   setUpdateProgress(94,"۹۴٪ — دریافت گزارش آخرین همگام‌سازی سراسری");
   let serverReport=null;
   try{
-   const {data,error}=await client.from("site_update_runs")
-    .select("run_at,status,added_count,updated_count,note,items")
-    .like("note","همگام‌سازی مستقل سرور%")
-    .order("run_at",{ascending:false}).limit(1).maybeSingle();
-   if(!error&&data)serverReport=data;
+   if(typeof window.gamescopeLoadLatestServerSyncReport==="function"){
+    const reportResult=await window.gamescopeLoadLatestServerSyncReport();
+    if(!reportResult?.error&&reportResult?.data)serverReport=reportResult.data;
+   }
   }catch(reportError){console.warn("Latest shared catalog report unavailable:",reportError)}
   if(serverReport){
    const serverDate=new Date(serverReport.run_at);
@@ -1282,6 +1281,14 @@ render();
   const {error}=await client.from("site_update_runs").insert({status:report.status||"success",added_count:report.added_count||0,updated_count:report.updated_count||0,note:String(report.note||"").slice(0,4000),items:Array.isArray(report.items)?report.items.slice(0,30):[]});
   if(error)return {stored:false,error:error.message};
   return {stored:true};
+ };
+ window.gamescopeLoadLatestServerSyncReport=async function(){
+  const {data,error}=await client.from("site_update_runs")
+   .select("run_at,note,items,added_count,updated_count,status")
+   .like("note","همگام‌سازی مستقل سرور%")
+   .order("run_at",{ascending:false}).limit(1);
+  if(error)return {data:null,error:error.message};
+  return {data:data?.[0]||null,error:null};
  };
  window.gamescopeLoadLatestUpdateReport=async function(){
   const {data,error}=await client.from("site_update_runs").select("run_at,note,items,added_count,updated_count,status").order("run_at",{ascending:false}).limit(1);
