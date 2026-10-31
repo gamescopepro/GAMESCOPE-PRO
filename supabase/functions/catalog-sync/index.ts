@@ -89,10 +89,10 @@ function companyNames(game: RawgGame | null | undefined): string[] {
 }
 
 function isSupportedPlatformName(value: unknown): boolean {
-  const name = String(value ?? "").trim().toLowerCase().replace(/\\s+/g, " ");
+  const name = String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   if (["pc", "windows", "microsoft windows", "linux", "macos", "mac os", "steam deck"].includes(name)) return true;
-  if (/^(playstation(?:\\s|$)|ps\\s?(?:1|2|3|4|5)\\b|psp\\b|ps vita\\b)/i.test(name)) return true;
-  return /^xbox(?:\\s|$)/i.test(name);
+  if (/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name)) return true;
+  return /^xbox(?:\s|$)/i.test(name);
 }
 
 function gameHasSupportedPlatform(game: RawgGame): boolean {
