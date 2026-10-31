@@ -340,18 +340,21 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       if (sameTitle && sameTitle.id !== catalogId) {
         if (!sameTitle.is_hidden) {
           const platforms = String(sameTitle.platforms ?? "");
-          if (!/\bpc\b/i.test(platforms)) {
-            await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
-              method: "PATCH",
-              headers: { "Prefer": "return=minimal" },
-              body: JSON.stringify({ platforms: platforms ? platforms + ", PC" : "PC", updated_at: new Date().toISOString() }),
-            });
-            result.updated++;
-            result.items.push({
-              kind: "updated", title,
-              text: "نسخهٔ PC از Steam شناسایی شد و به پلتفرم‌های بازی اضافه شد.",
-            });
-          }
+          const hasPc = /\bpc\b/i.test(platforms);
+          await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
+            method: "PATCH",
+            headers: { "Prefer": "return=minimal" },
+            body: JSON.stringify({
+              platforms: hasPc ? platforms : (platforms ? platforms + ", PC" : "PC"),
+              store_url: steamUrl,
+              updated_at: new Date().toISOString(),
+            }),
+          });
+          result.updated++;
+          result.items.push({
+            kind: "updated", title,
+            text: "نسخهٔ Steam شناسایی شد؛ پلتفرم PC و لینک مستقیم Steam بررسی/به‌روزرسانی شد.",
+          });
         }
       } else {
         const row: CatalogRow = {
