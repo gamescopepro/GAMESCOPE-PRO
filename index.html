@@ -474,6 +474,29 @@ function updateMergedOnlineCard(game){
  if(platformNode)platformNode.textContent="پلتفرم: "+onlinePlatformLabels(game).join("، ");
  const linksNode=card.querySelector(".js-online-store-links");
  if(linksNode)linksNode.innerHTML=gameStoreLinks(game).map(link=>'<a class="secondary" href="'+link.url+'" target="_blank" rel="noopener noreferrer" style="display:inline-block;flex:1 1 auto;padding:9px 10px;border-radius:10px;text-decoration:none;color:inherit;text-align:center">'+link.label+' ↗</a>').join("");
+ const companies=[...(game.publishers||[]),...(game.developers||[])].map(x=>String(typeof x==="string"?x:x?.name||"").trim()).filter(Boolean);
+ const companyNames=[...new Map(companies.map(name=>[name.toLowerCase(),name])).values()].slice(0,2);
+ const companyNode=card.querySelector("[data-company-label]");
+ if(companyNode)companyNode.textContent="شرکت: "+(companyNames.join(" • ")||"اطلاعات شرکت سازنده/ناشر در منابع موجود ثبت نشده");
+ const companyInitial=card.querySelector("[data-company-initial]");
+ if(companyInitial)companyInitial.textContent=(companyNames[0]||"🎮").slice(0,1).toUpperCase();
+ const genreNode=card.querySelector(".js-online-genre");
+ const genres=(game.genres||[]).map(x=>String(x?.name||"").trim()).filter(Boolean);
+ if(genreNode&&genres.length)genreNode.textContent=genres.join("، ");
+ const releaseNode=card.querySelector(".js-online-release");
+ if(releaseNode){
+  const release=String(game.released||"تاریخ انتشار نامشخص");
+  const today=new Date().toISOString().slice(0,10);
+  const state=game.releaseStatus||(game.released?(game.released>today?"upcoming":"released"):"unknown");
+  const label=state==="upcoming"?"🗓 به‌زودی":state==="released"?"✓ منتشر شده":"وضعیت انتشار نامشخص";
+  releaseNode.innerHTML="انتشار: "+esc(release)+" • <span class=\"chip\" data-release-status=\""+esc(state)+"\">"+label+"</span>";
+ }
+ const cover=card.querySelector(".cover");
+ const imageUrl=String(game.background_image||"").trim();
+ if(cover&&imageUrl&&!cover.querySelector("img")){
+  cover.classList.remove("cover-missing");cover.classList.add("has-cover");
+  cover.insertAdjacentHTML("beforeend",'<img src="'+esc(imageUrl)+'" alt="کاور '+esc(game.name||"بازی")+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">');
+ }
 }
 function renderOnlineResults(results,append=false){
  results=(Array.isArray(results)?results:[]).filter(gameHasSupportedPlatform);
@@ -523,7 +546,7 @@ function renderOnlineResults(results,append=false){
   const saved=userGames.find(x=>String(x.rawgId||"")===String(g.id)||String(x.id)==="rawg_"+String(g.id)||normalizeGameName(x.title)===normalizeGameName(g.name||""));
   const addLabel=saved?(saved.owned?"✓ در کتابخانه":"✓ در بازی‌های من"):"＋ افزودن به بازی‌های من";
   const coverClass=imageUrl?"has-cover":"cover-missing";
-  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="font-size:11px;color:#80a8c9">منبع اطلاعات: '+sourceLabel+'</div><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta">'+genre+'</div><div class="meta js-online-platforms">پلتفرم: '+platforms+'</div><div class="meta">انتشار: '+release+' • '+releaseBadge+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions js-online-store-links" style="flex-wrap:wrap"><button onclick="addRawgGame(\''+esc(String(g.id))+'\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>';
+  return '<article class="card" data-online-game-id="'+esc(String(g.id))+'"><div class="cover '+coverClass+'" style="overflow:hidden"><span class="cover-fallback">🎮</span>'+image+'</div><div class="card-body"><h4>'+title+'</h4><div class="meta" style="font-size:11px;color:#80a8c9">منبع اطلاعات: '+sourceLabel+'</div><div class="meta" style="display:flex;align-items:center;gap:7px"><span data-company-initial style="display:inline-grid;place-items:center;min-width:27px;height:27px;border-radius:8px;background:#18395b;border:1px solid #2b5d88;font-weight:bold;color:#38d7ff">'+companyInitial+'</span><span data-company-label>شرکت: '+esc(company)+'</span></div><div class="meta js-online-genre">'+genre+'</div><div class="meta js-online-platforms">پلتفرم: '+platforms+'</div><div class="meta js-online-release">انتشار: '+release+' • '+releaseBadge+'</div><div class="meta">امتیاز: <b class="score">'+rating+'</b> / 5</div><div class="card-actions js-online-store-links" style="flex-wrap:wrap"><button onclick="addRawgGame(\''+esc(String(g.id))+'\')">'+addLabel+'</button>'+storeLinksHtml+'</div></div></article>';
  }).join("");
  box.insertAdjacentHTML("beforeend",html);
  const hasStoredMore=!onlineLastQuery&&typeof window.gamescopePublicCatalogHasMore==="function"&&window.gamescopePublicCatalogHasMore();
