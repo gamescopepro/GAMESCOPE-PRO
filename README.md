@@ -27,7 +27,8 @@ Search for game titles, browse available platforms, check release dates, discove
 - Platform, genre, publisher and release-date information
 - Personal game library, favorites, ratings and notes
 - Multilingual interface
-- Server-side RAWG, Steam featured-feed and queued Steam-detail synchronization every 15 minutes; broad SteamSpy discovery advances one page per day
+- Server-side RAWG rolling catalog scans for PlayStation and Xbox, upcoming/recent-release checks, and queued Steam product details every 15 minutes; broad SteamSpy discovery advances one page per day
+- Upcoming games remain in the same searchable catalog as released games and are marked with their release status
 - Manual online source check and latest update report
 
 ## Data and technology
