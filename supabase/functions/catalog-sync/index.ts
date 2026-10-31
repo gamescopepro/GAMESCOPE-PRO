@@ -282,7 +282,13 @@ async function mergeSupplementalGame(
   );
   const sourceExisting = Array.isArray(sourceRows) ? sourceRows[0] : null;
   const sameTitle = Array.isArray(existingRows)
-    ? existingRows.find((row: any) => normalizeName(row?.title) === normalizeName(title) && String(row?.id) !== sourceId)
+    ? existingRows.find((row: any) =>
+        normalizeName(row?.title) === normalizeName(title) &&
+        String(row?.id) !== sourceId &&
+        !String(row?.id ?? "").startsWith("steam_") &&
+        !String(row?.id ?? "").startsWith("gog_") &&
+        !String(row?.id ?? "").startsWith("igdb_"),
+      )
     : null;
   const target = sameTitle || sourceExisting;
   if (target?.is_hidden) return "hidden";
@@ -440,7 +446,18 @@ async function syncIgdbCatalog(): Promise<SupplementalSyncResult> {
     const platformList = Array.isArray(game?.platforms)
       ? game.platforms.map((p: any) => String(p?.name ?? "").trim()).filter(Boolean)
       : [];
-    const platforms = platformList.join("، ") || "PC";
+    const platforms = [...new Set(platformList.map((name) => {
+      const normalized = name.toLowerCase();
+      if (/pc|windows|linux|macos|mac os/.test(normalized)) return "PC";
+      if (/playstation\s*5|ps5/.test(normalized)) return "PS5";
+      if (/playstation\s*4|ps4/.test(normalized)) return "PS4";
+      if (/playstation\s*3|ps3/.test(normalized)) return "PS3";
+      if (/playstation\s*2|ps2/.test(normalized)) return "PS2";
+      if (/xbox.*series|series.*xbox/.test(normalized)) return "Xbox Series X|S";
+      if (/xbox.*one|one.*xbox/.test(normalized)) return "Xbox One";
+      if (/xbox/.test(normalized)) return "Xbox";
+      return name;
+    }))].join("، ") || "PC";
     const companies = Array.isArray(game?.involved_companies)
       ? game.involved_companies
         .filter((x: any) => x?.publisher || x?.developer)
