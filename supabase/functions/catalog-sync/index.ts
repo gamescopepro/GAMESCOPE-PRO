@@ -980,8 +980,23 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       await markSteamQueueProcessed(appid);
       result.processed++;
     } catch (error) {
-      result.errors.push("Steam AppID " + appid + ": " +
-        (error instanceof Error ? error.message : "خطای ناشناخته").slice(0, 180));
+      const message = error instanceof Error ? error.message : "خطای ناشناخته";
+      // A transient Steam Store failure must not permanently pin the oldest queue rows.
+      // Keep the AppID pending, but move it to the back so healthy entries can progress.
+      try {
+        await restRequest("steam_sync_queue?appid=eq." + appid, {
+          method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
+          body: JSON.stringify({
+            queued_at: new Date().toISOString(),
+            last_modified: Math.floor(Date.now() / 1000),
+          }),
+        });
+      } catch (requeueError) {
+        result.errors.push("Steam AppID " + appid + " requeue failed: " +
+          (requeueError instanceof Error ? requeueError.message : "خطای ناشناخته").slice(0, 120));
+      }
+      result.errors.push("Steam AppID " + appid + ": " + message.slice(0, 180));
     }
   }
   return result;
