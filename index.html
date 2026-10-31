@@ -1247,14 +1247,18 @@ render();
    const releaseDate=game.released||existing?.release_date||null;
    const releaseStatus=releaseDate?(releaseDate>today?"upcoming":"released"):(existing?.release_status||"unknown");
    const genre=Array.isArray(game.genres)&&game.genres.length?game.genres.map(x=>x.name).join("، "):"";
-   const storeUrl="https://store.playstation.com/en-us/search/"+encodeURIComponent(game.name);
+   const platformNames=onlinePlatformLabels(game);
+   const existingPlatformNames=String(existing?.platforms||"").split(/[،,]/).map(name=>name.trim()).filter(Boolean);
+   const mergedPlatformNames=onlinePlatformLabels({
+    platforms:[...existingPlatformNames,...platformNames].map(name=>({platform:{name}}))
+   });
+   const storeUrl=gameStoreLinks(game)[0]?.url||"";
    if(existing){
     const next={...existing};
     if((!next.publisher||!String(next.publisher).trim())&&names.length)next.publisher=names.join(" • ");
     if((!next.release_date)&&releaseDate)next.release_date=releaseDate;
     if((!next.genre||next.genre==="ژانر نامشخص")&&genre)next.genre=genre;
-    const platformNames=Array.isArray(game.platforms)?game.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"";
-    if((!next.platforms||!String(next.platforms).trim())&&platformNames)next.platforms=platformNames;
+    if(mergedPlatformNames.length)next.platforms=mergedPlatformNames.join("، ");
     if((next.critic===null||next.critic===undefined)&&typeof game.metacritic==="number")next.critic=Math.round(game.metacritic)/10;
     if((!next.store_url||!String(next.store_url).trim()))next.store_url=storeUrl;
     if(!next.emoji)next.emoji="🎮";
@@ -1263,8 +1267,7 @@ render();
     const changed=fields.some(k=>String(next[k]??"")!==String(existing[k]??""));
     if(changed){next.updated_at=new Date().toISOString();batch.push(next);byId.set(String(next.id),next);byTitle.set(normalizeGameName(next.title),next);updated++;changeItems.push({kind:"base",title:next.title,text:"اطلاعات کاتالوگ به‌روزرسانی شد"+(next.publisher?" • شرکت: "+next.publisher:"")+" • وضعیت: "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"نامشخص")});}
    }else{
-    const platformNames=Array.isArray(game.platforms)?game.platforms.map(x=>x.platform?.name).filter(Boolean).join("، "):"PS5";
-    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",platforms:platformNames||"PS5",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl,is_hidden:false,is_builtin:false};
+    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",platforms:platformNames.join("، ")||"نامشخص",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl||null,is_hidden:false,is_builtin:false};
     batch.push(next);byId.set(rawId,next);byTitle.set(normalizeGameName(next.title),next);added++;
     changeItems.push({kind:"new",title:next.title,text:"به کاتالوگ عمومی افزوده شد"+(next.publisher?" • شرکت: "+next.publisher:" • اطلاعات شرکت هنوز در RAWG موجود نیست")+" • "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"وضعیت انتشار نامشخص")});
    }
