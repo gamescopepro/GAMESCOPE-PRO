@@ -185,6 +185,311 @@ async function restRequest(path: string, init: RequestInit = {}): Promise<any> {
   return parsed;
 }
 
+async function restRequestAll(path: string, pageSize = 1000): Promise<any[]> {
+  const separator = path.includes("?") ? "&" : "?";
+  const all: any[] = [];
+  for (let offset = 0; offset < 100_000; offset += pageSize) {
+    const page = await restRequest(
+      path + separator + "order=id.asc&limit=" + pageSize + "&offset=" + offset,
+    );
+    if (!Array.isArray(page)) throw new Error("Supabase paginated query returned a non-array response.");
+    all.push(...page);
+    if (page.length < pageSize) return all;
+  }
+  throw new Error("Supabase catalog exceeded the 100,000-row safety pagination limit.");
+}
+
+
+
+function normalizeCatalogWrite(row: Partial<CatalogRow>): CatalogRow {
+  const nowIso = new Date().toISOString();
+  return {
+    id: String(row.id ?? ""),
+    title: String(row.title ?? "").trim(),
+    genre: row.genre ?? "ژانر نامشخص",
+    platforms: row.platforms ?? "نامشخص",
+    emoji: row.emoji ?? "🎮",
+    critic: row.critic ?? null,
+    publisher: row.publisher ?? null,
+    release_date: row.release_date ?? null,
+    release_status: row.release_status ?? "unknown",
+    store_url: row.store_url ?? null,
+    is_hidden: row.is_hidden ?? false,
+    is_builtin: row.is_builtin ?? false,
+    updated_at: row.updated_at ?? nowIso,
+  };
+}
+
+async function upsertCatalogRows(rows: Partial<CatalogRow>[]): Promise<void> {
+  const normalized = rows
+    .map(normalizeCatalogWrite)
+    .filter((row) => row.id && row.title);
+  for (let offset = 0; offset < normalized.length; offset += 100) {
+    await restRequest("site_catalog?on_conflict=id", {
+      method: "POST",
+      headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(normalized.slice(offset, offset + 100)),
+    });
+  }
+}
+
+type SupplementalSyncResult = {
+  enabled: boolean;
+  skipped?: boolean;
+  discovered: number;
+  added: number;
+  updated: number;
+  errors: string[];
+  items: Array<{ kind: string; title: string; text: string }>;
+};
+
+function releaseDateFromUnknown(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const match = value.match(/\\d{4}-\\d{2}-\\d{2}/);
+    if (match) return match[0];
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : null;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return releaseDateFromUnknown(record.date ?? record.timestamp ?? record.value);
+  }
+  return null;
+}
+
+async function mergeSupplementalGame(
+  sourceId: string,
+  title: string,
+  genre: string | null,
+  platforms: string,
+  publisher: string | null,
+  releaseDate: string | null,
+  releaseStatus: string,
+  storeUrl: string | null,
+): Promise<"added" | "updated" | "unchanged" | "hidden"> {
+  const existingRows = await restRequest(
+    "site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin&title=eq." +
+      encodeURIComponent(title) + "&limit=10",
+  );
+  const sourceRows = await restRequest(
+    "site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin&id=eq." +
+      encodeURIComponent(sourceId) + "&limit=1",
+  );
+  const sourceExisting = Array.isArray(sourceRows) ? sourceRows[0] : null;
+  const sameTitle = Array.isArray(existingRows)
+    ? existingRows.find((row: any) => normalizeName(row?.title) === normalizeName(title) && String(row?.id) !== sourceId)
+    : null;
+  const target = sameTitle || sourceExisting;
+  if (target?.is_hidden) return "hidden";
+
+  const today = dateString(new Date());
+  const nextPlatforms = [...new Set(
+    String(target?.platforms ?? platforms).split(/[،,]/).map((x: string) => x.trim()).filter(Boolean).concat(
+      platforms.split(/[،,]/).map((x: string) => x.trim()).filter(Boolean),
+    ),
+  )].join("، ");
+  const next: CatalogRow = normalizeCatalogWrite({
+    ...(target ?? {}),
+    id: String(target?.id ?? sourceId),
+    title: String(target?.title ?? title),
+    genre: target?.genre && target.genre !== "ژانر نامشخص" ? target.genre : (genre || target?.genre || "ژانر نامشخص"),
+    platforms: nextPlatforms || platforms,
+    emoji: target?.emoji || "🎮",
+    critic: target?.critic ?? null,
+    publisher: target?.publisher || publisher || null,
+    release_date: target?.release_date || releaseDate || null,
+    release_status: releaseStatus !== "unknown"
+      ? releaseStatus
+      : (target?.release_status || "unknown"),
+    store_url: target?.store_url || storeUrl || null,
+    is_hidden: false,
+    is_builtin: target?.is_builtin ?? false,
+    updated_at: new Date().toISOString(),
+  });
+
+  const changedFields: Array<keyof CatalogRow> = [
+    "genre", "platforms", "publisher", "release_date", "release_status", "store_url",
+  ];
+  const changed = !target || changedFields.some((key) =>
+    String(next[key] ?? "") !== String((target as any)[key] ?? "")
+  );
+  if (!changed) return "unchanged";
+  await upsertCatalogRows([next]);
+  return target ? "updated" : "added";
+}
+
+async function syncGogCatalog(): Promise<SupplementalSyncResult> {
+  const result: SupplementalSyncResult = {
+    enabled: true, discovered: 0, added: 0, updated: 0, errors: [], items: [],
+  };
+  // GOG's public storefront listing endpoint is an undocumented/community-documented
+  // interface. Treat it as best-effort and never let it block RAWG or Steam updates.
+  const url = "https://embed.gog.com/games/ajax/filtered?mediaType=game&page=1&limit=50";
+  const payload = await fetchJson(url, 18000);
+  const products = Array.isArray(payload?.products) ? payload.products : [];
+  if (!products.length && Number(payload?.totalResults ?? payload?.totalGamesFound ?? 0) > 0) {
+    throw new Error("GOG listing returned an unexpected response format.");
+  }
+  const seen = new Set<string>();
+  for (const product of products) {
+    const id = Number(product?.id);
+    const title = String(product?.title ?? "").trim();
+    const systems = product?.worksOn ?? {};
+    const isPc = Boolean(systems?.Windows || systems?.Mac || systems?.Linux);
+    if (!Number.isSafeInteger(id) || id <= 0 || !title || !isPc || product?.isGame === false || product?.isMovie === true) continue;
+    const key = normalizeName(title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.discovered++;
+    const releaseDate = releaseDateFromUnknown(product?.releaseDate);
+    const releaseStatus = product?.isComingSoon
+      ? "upcoming"
+      : releaseDate
+        ? (releaseDate > dateString(new Date()) ? "upcoming" : "released")
+        : "unknown";
+    const path = String(product?.url ?? (product?.slug ? "/game/" + product.slug : ""));
+    const storeUrl = path.startsWith("https://")
+      ? path
+      : path.startsWith("/")
+        ? "https://www.gog.com" + path
+        : null;
+    const outcome = await mergeSupplementalGame(
+      "gog_" + id,
+      title,
+      String(product?.category ?? "").trim() || null,
+      "PC",
+      String(product?.publisher ?? "").trim() || null,
+      releaseDate,
+      releaseStatus,
+      storeUrl,
+    );
+    if (outcome === "added") {
+      result.added++;
+      if (result.items.length < MAX_REPORT_ITEMS) result.items.push({
+        kind: "new", title, text: "از فهرست فروشگاه GOG شناسایی و به کاتالوگ PC اضافه شد.",
+      });
+    } else if (outcome === "updated") {
+      result.updated++;
+      if (result.items.length < MAX_REPORT_ITEMS) result.items.push({
+        kind: "updated", title, text: "اطلاعات بازی با داده‌های فروشگاه GOG تکمیل شد.",
+      });
+    }
+  }
+  return result;
+}
+
+async function syncIgdbCatalog(): Promise<SupplementalSyncResult> {
+  const result: SupplementalSyncResult = {
+    enabled: false, skipped: true, discovered: 0, added: 0, updated: 0, errors: [], items: [],
+  };
+  const clientId = Deno.env.get("IGDB_CLIENT_ID") ?? "";
+  const clientSecret = Deno.env.get("IGDB_CLIENT_SECRET") ?? "";
+  if (!clientId || !clientSecret) return result;
+
+  result.enabled = true;
+  result.skipped = false;
+  const tokenResponse = await fetchJson(
+    "https://id.twitch.tv/oauth2/token?client_id=" + encodeURIComponent(clientId) +
+      "&client_secret=" + encodeURIComponent(clientSecret) + "&grant_type=client_credentials",
+    15000,
+  );
+  const accessToken = String(tokenResponse?.access_token ?? "");
+  if (!accessToken) throw new Error("Twitch OAuth did not return an IGDB app access token.");
+
+  const now = new Date();
+  const from = Math.floor(new Date(now.getTime() - 45 * 86400000).getTime() / 1000);
+  const to = Math.floor(new Date(now.getTime() + 3 * 365 * 86400000).getTime() / 1000);
+  const query = [
+    "fields name,first_release_date,genres.name,platforms.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,rating,aggregated_rating;",
+    "where platforms = (6,7,8,9,11,12,48,49,167,169) & first_release_date >= " + from +
+      " & first_release_date <= " + to + " & version_parent = null;",
+    "sort first_release_date asc;",
+    "limit 100;",
+  ].join(" ");
+  const response = await fetch("https://api.igdb.com/v4/games", {
+    method: "POST",
+    headers: {
+      "Client-ID": clientId,
+      "Authorization": "Bearer " + accessToken,
+      "Content-Type": "text/plain",
+      "Accept": "application/json",
+    },
+    body: query,
+    signal: AbortSignal.timeout(20000),
+  });
+  const body = await response.text();
+  let games: any;
+  try { games = body ? JSON.parse(body) : []; } catch { games = []; }
+  if (!response.ok || !Array.isArray(games)) {
+    throw new Error("IGDB HTTP " + response.status + ": " + String(body).slice(0, 180));
+  }
+
+  for (const game of games) {
+    const title = String(game?.name ?? "").trim();
+    if (!title) continue;
+    result.discovered++;
+    const releaseDate = releaseDateFromUnknown(game?.first_release_date);
+    const releaseStatus = releaseDate
+      ? (releaseDate > dateString(new Date()) ? "upcoming" : "released")
+      : "unknown";
+    const platformList = Array.isArray(game?.platforms)
+      ? game.platforms.map((p: any) => String(p?.name ?? "").trim()).filter(Boolean)
+      : [];
+    const platforms = platformList.join("، ") || "PC";
+    const companies = Array.isArray(game?.involved_companies)
+      ? game.involved_companies
+        .filter((x: any) => x?.publisher || x?.developer)
+        .map((x: any) => String(x?.company?.name ?? "").trim())
+        .filter(Boolean)
+      : [];
+    const genre = Array.isArray(game?.genres)
+      ? game.genres.map((x: any) => String(x?.name ?? "").trim()).filter(Boolean).join("، ")
+      : "";
+    const critic = Number.isFinite(Number(game?.aggregated_rating))
+      ? Number(game.aggregated_rating) / 10
+      : Number.isFinite(Number(game?.rating))
+        ? Number(game.rating) / 10
+        : null;
+    const platformLower = platforms.toLowerCase();
+    let storeUrl: string | null = null;
+    if (/playstation 5|playstation 4|ps5|ps4/i.test(platforms)) {
+      storeUrl = "https://store.playstation.com/en-us/search/" + encodeURIComponent(title);
+    } else if (/xbox/i.test(platforms)) {
+      storeUrl = "https://www.xbox.com/en-US/search?q=" + encodeURIComponent(title);
+    } else if (/pc|windows/i.test(platformLower)) {
+      storeUrl = "https://store.steampowered.com/search/?term=" + encodeURIComponent(title);
+    }
+    const outcome = await mergeSupplementalGame(
+      "igdb_" + String(game.id),
+      title,
+      genre || null,
+      platforms,
+      [...new Set(companies)].slice(0, 2).join(" • ") || null,
+      releaseDate,
+      releaseStatus,
+      storeUrl,
+    );
+    if (outcome === "added") {
+      result.added++;
+      if (result.items.length < MAX_REPORT_ITEMS) result.items.push({
+        kind: "new", title, text: "از پایگاه داده IGDB شناسایی و به کاتالوگ چندپلتفرمی اضافه شد.",
+      });
+    } else if (outcome === "updated") {
+      result.updated++;
+      if (result.items.length < MAX_REPORT_ITEMS) result.items.push({
+        kind: "updated", title, text: "اطلاعات پلتفرم، تاریخ انتشار یا شرکت از IGDB تکمیل شد.",
+      });
+    }
+  }
+  return result;
+}
+
+
 async function verifyCronToken(token: string): Promise<boolean> {
   const result = await restRequest("rpc/verify_gamescope_catalog_cron_token", {
     method: "POST",
@@ -294,7 +599,13 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
     const byTitle = new Map<string, any>();
     for (const row of titleRows) {
       const key = normalizeName(row?.title);
-      if (key && !byTitle.has(key)) byTitle.set(key, row);
+      if (!key) continue;
+      const current = byTitle.get(key);
+      // Prefer a hidden/manual RAWG record over a Steam record when exact-title
+      // matches exist; separate Steam AppIDs must never be merged by title alone.
+      if (!current || (String(current.id ?? "").startsWith("steam_") && !String(row?.id ?? "").startsWith("steam_"))) {
+        byTitle.set(key, row);
+      }
     }
     const catalogWrites = new Map<string, any>();
     const nowIso = now.toISOString();
@@ -306,14 +617,18 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       if (existingById?.is_hidden) continue;
 
       const sameTitle = byTitle.get(normalizeName(app.name));
-      if (sameTitle && String(sameTitle.id) !== catalogId) {
+      const mergeableSameTitle = sameTitle &&
+        String(sameTitle.id) !== catalogId &&
+        !String(sameTitle.id ?? "").startsWith("steam_");
+      if (mergeableSameTitle) {
         if (sameTitle.is_hidden) continue;
         const currentPlatforms = String(sameTitle.platforms ?? "");
         const hasPc = /\bpc\b/i.test(currentPlatforms);
         const next = {
           ...sameTitle,
           platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
-          store_url: steamUrl,
+          // Preserve an existing store page; a PC store search is still available in the UI.
+          store_url: sameTitle.store_url || steamUrl,
           updated_at: nowIso,
         };
         catalogWrites.set(String(next.id), next);
@@ -352,7 +667,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       }
     }
 
-    const writeRows = [...catalogWrites.values()];
+    const writeRows = [...catalogWrites.values()].map(normalizeCatalogWrite);
     for (let offset = 0; offset < writeRows.length; offset += 100) {
       await restRequest("site_catalog?on_conflict=id", {
         method: "POST",
@@ -446,9 +761,14 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       }
 
       const sameTitleRows = await restRequest(
-        "site_catalog?title=eq." + encodeURIComponent(title) + "&select=*&limit=1",
+        "site_catalog?title=eq." + encodeURIComponent(title) + "&select=*&limit=10",
       );
-      const sameTitle = Array.isArray(sameTitleRows) ? sameTitleRows[0] : null;
+      const sameTitle = Array.isArray(sameTitleRows)
+        ? sameTitleRows.find((row: any) =>
+            String(row?.id) !== catalogId &&
+            !String(row?.id ?? "").startsWith("steam_"),
+          ) ?? null
+        : null;
       const releaseText = String(game?.release_date?.date ?? "").trim();
       const parsedRelease = releaseText ? Date.parse(releaseText) : NaN;
       const releaseDate = Number.isFinite(parsedRelease)
@@ -468,11 +788,10 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
       const publisher = [...new Set(companies)].slice(0, 2).join(" • ") ||
         String(existing?.publisher ?? "") || null;
       const steamUrl = "https://store.steampowered.com/app/" + appid + "/";
-      const target = sameTitle && String(sameTitle.id) !== catalogId
-        ? sameTitle
-        : existing;
+      const mergeableSameTitle = Boolean(sameTitle) && !String(sameTitle?.id ?? "").startsWith("steam_");
+      const target = mergeableSameTitle ? sameTitle : existing;
 
-      if (sameTitle && String(sameTitle.id) !== catalogId && !sameTitle.is_hidden) {
+      if (mergeableSameTitle && sameTitle && !sameTitle.is_hidden) {
         const currentPlatforms = String(sameTitle.platforms ?? "");
         const hasPc = /\bpc\b/i.test(currentPlatforms);
         await restRequest("site_catalog?id=eq." + encodeURIComponent(String(sameTitle.id)), {
@@ -480,7 +799,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
           headers: { "Prefer": "return=minimal" },
           body: JSON.stringify({
             platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
-            store_url: steamUrl,
+            store_url: sameTitle.store_url || steamUrl,
             updated_at: new Date().toISOString(),
           }),
         });
@@ -568,7 +887,7 @@ Deno.serve(async (req: Request) => {
 
   let existingRows: CatalogRow[];
   try {
-    existingRows = await restRequest("site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin");
+    existingRows = await restRequestAll("site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin");
     if (!Array.isArray(existingRows)) existingRows = [];
   } catch (error) {
     const message = "خواندن کاتالوگ عمومی ناموفق بود: " + (error instanceof Error ? error.message : "خطای ناشناخته");
@@ -673,7 +992,7 @@ Deno.serve(async (req: Request) => {
       await restRequest("site_catalog?on_conflict=id", {
         method: "POST",
         headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(batch.slice(offset, offset + 100)),
+        body: JSON.stringify(batch.slice(offset, offset + 100).map(normalizeCatalogWrite)),
       });
     }
 
@@ -691,22 +1010,44 @@ Deno.serve(async (req: Request) => {
       };
     }
 
-    const errors = [futureResult.error, recentResult.error, ...steamResult.errors].filter(Boolean);
-    const bothEmptyDueToErrors = errors.length >= 2 && futureGames.length === 0 && recentGames.length === 0 && steamResult.processed === 0;
+    // The currently documented public GOG listing endpoint returned HTTP 400
+    // during live verification. Keep it disabled until its current contract can be
+    // confirmed; this prevents a known-broken provider from marking every run partial.
+    const gogResult: SupplementalSyncResult = {
+      enabled: false, skipped: true, discovered: 0, added: 0, updated: 0, errors: [], items: [],
+    };
+
+    let igdbResult: SupplementalSyncResult = {
+      enabled: false, skipped: true, discovered: 0, added: 0, updated: 0, errors: [], items: [],
+    };
+    try {
+      igdbResult = await syncIgdbCatalog();
+      changedItems.push(...igdbResult.items);
+    } catch (error) {
+      igdbResult.errors.push(error instanceof Error ? error.message : "IGDB sync failed");
+    }
+
+    const errors = [futureResult.error, recentResult.error, ...steamResult.errors, ...gogResult.errors, ...igdbResult.errors].filter(Boolean);
+    const activeSources = 1 + (steamResult.enabled ? 1 : 0) + (gogResult.enabled ? 1 : 0) + (igdbResult.enabled ? 1 : 0);
+    const successfulSources = (futureResult.error ? 0 : 1) + (recentResult.error ? 0 : 1) + (steamResult.errors.length ? 0 : 1) + (gogResult.errors.length ? 0 : 1) + (igdbResult.errors.length ? 0 : (igdbResult.enabled ? 1 : 0));
+    const bothEmptyDueToErrors = successfulSources === 0 && futureGames.length === 0 && recentGames.length === 0 && steamResult.processed === 0 && gogResult.discovered === 0;
     const status: "success" | "partial" | "failed" = bothEmptyDueToErrors ? "failed" : errors.length ? "partial" : "success";
-    const totalAdded = added + steamResult.added;
-    const totalUpdated = updated + steamResult.updated;
+    const totalAdded = added + steamResult.added + gogResult.added + igdbResult.added;
+    const totalUpdated = updated + steamResult.updated + gogResult.updated + igdbResult.updated;
     const errorText = errors.length ? " خطای منبع: " + errors.join(" | ") : "";
-    const steamText = " Steam بدون کلید شخصی: " + steamResult.discovered +
-      " بازی از صفحهٔ SteamSpy (صفحهٔ بعدی: " + steamResult.page + ") دریافت شد؛ " +
-      steamResult.queued + " شناسه از فهرست‌های فروشگاه در صف جزئیات قرار گرفت، " +
-      steamResult.processed + " مورد بررسی شد، " + steamResult.added +
-      " بازی جدید و " + steamResult.updated + " مورد به‌روزرسانی شد.";
+    const steamText = " SteamSpy: " + steamResult.discovered +
+      " مورد کشف شد؛ " + steamResult.queued + " شناسهٔ فروشگاه در صف قرار گرفت و " +
+      steamResult.processed + " مورد بررسی شد (" + steamResult.added + " جدید، " + steamResult.updated + " تکمیل‌شده).";
+    const gogText = " GOG فعلاً غیرفعال است؛ رابط عمومی هنگام تست پاسخ HTTP 400 داد و تا تأیید سازگاری دوباره داده‌ای از آن وارد نمی‌شود.";
+    const igdbText = igdbResult.enabled
+      ? " IGDB: " + igdbResult.discovered + " نتیجه بررسی شد (" + igdbResult.added + " جدید، " + igdbResult.updated + " تکمیل‌شده)."
+      : " IGDB هنوز فعال نیست؛ برای فعال‌سازی امن، IGDB_CLIENT_ID و IGDB_CLIENT_SECRET باید در Edge Function Secrets تنظیم شوند.";
     const note =
-      "همگام‌سازی مستقل سرور انجام شد: " +
+      "همگام‌سازی مستقل سرور انجام شد: RAWG " +
       futureGames.length + " بازی آینده و " + recentGames.length +
-      " بازی منتشرشدهٔ اخیر از RAWG با فیلتر PlayStation، PC و Xbox دریافت شد (حداکثر ۵ صفحه برای هر دسته). " +
-      totalAdded + " بازی جدید و " + totalUpdated + " بازی به‌روزرسانی شد." + steamText +
+      " بازی منتشرشدهٔ اخیر را دریافت کرد (حداکثر ۵ صفحه برای هر دسته)." +
+      steamText + gogText + igdbText +
+      " مجموع " + totalAdded + " بازی جدید و " + totalUpdated + " بازی تکمیل‌شده." +
       " این بررسی پوشش کامل همهٔ بازی‌های دنیا یا تمام فروشگاه‌ها را تضمین نمی‌کند." + errorText;
 
     await saveRun(status, totalAdded, totalUpdated, note, changedItems);
@@ -718,16 +1059,17 @@ Deno.serve(async (req: Request) => {
       recent_found: recentGames.length,
       added: totalAdded,
       updated: totalUpdated,
-      steam: {
-        enabled: steamResult.enabled,
-        source: "SteamSpy public catalogue + Steam Store featured/appdetails",
-        page: steamResult.page,
-        discovered: steamResult.discovered,
-        queued: steamResult.queued,
-        processed: steamResult.processed,
-        added: steamResult.added,
-        updated: steamResult.updated,
-        errors: steamResult.errors.length,
+      sources: {
+        rawg: { enabled: true, future_found: futureGames.length, recent_found: recentGames.length, errors: [futureResult.error, recentResult.error].filter(Boolean).length },
+        steam: {
+          enabled: steamResult.enabled,
+          source: "SteamSpy public catalogue + Steam Store featured/appdetails",
+          page: steamResult.page, discovered: steamResult.discovered,
+          queued: steamResult.queued, processed: steamResult.processed,
+          added: steamResult.added, updated: steamResult.updated, errors: steamResult.errors.length,
+        },
+        gog: { enabled: gogResult.enabled, discovered: gogResult.discovered, added: gogResult.added, updated: gogResult.updated, errors: gogResult.errors.length },
+        igdb: { enabled: igdbResult.enabled, skipped: Boolean(igdbResult.skipped), discovered: igdbResult.discovered, added: igdbResult.added, updated: igdbResult.updated, errors: igdbResult.errors.length },
       },
       pages: { future: futureResult.pages, recent: recentResult.pages },
       report_saved: true,
