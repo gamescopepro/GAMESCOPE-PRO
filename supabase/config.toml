@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.game-catalog]
 verify_jwt = false
+
+[functions.gamescope-ai]
+verify_jwt = false
