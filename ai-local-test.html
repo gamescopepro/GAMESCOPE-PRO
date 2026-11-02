@@ -26,14 +26,14 @@ a{color:#8bdcff}.hidden{display:none!important}
   <h1>🧪 آزمایش GAMESCOPE AI محلی</h1>
   <div class="sub">این صفحه فقط برای آزمایش است و به هوش مصنوعی فعلی سایت دست نمی‌زند. هدف این است که ببینیم آیا مرورگر و دستگاه می‌توانند یک مدل هوش مصنوعی را روی خود دستگاه اجرا کنند یا نه.</div>
   <div id="deviceStatus" class="status">در حال بررسی قابلیت‌های مرورگر…</div>
-  <div class="small">مدل آزمایشی: Qwen2.5-0.5B Instruct با Transformers.js 4.3.2. برای اجرای محلی، مرورگر سازگار با WebGPU لازم است. دانلود اولیه حدود ۸۰۰ مگابایت است؛ فقط با زدن دکمه زیر شروع می‌شود. سؤال‌ها پس از بارگذاری مدل روی دستگاه پردازش می‌شوند و به API هوش مصنوعی ارسال نمی‌شوند.</div>
+  <div class="small">مدل آزمایشی سبک: SmolLM2-135M Instruct با Transformers.js 4.3.2. برای اجرای محلی، مرورگر سازگار با WebGPU لازم است. حجم فایل فشردهٔ مدل حدود ۱۲۰ مگابایت است؛ حافظهٔ بیشتری هم برای اجرای مدل لازم خواهد بود. سؤال‌ها پس از بارگذاری مدل روی دستگاه پردازش می‌شوند و به API هوش مصنوعی ارسال نمی‌شوند.</div>
  </div>
  <div class="card">
   <h2 style="font-size:17px;margin:0 0 10px">۱) بررسی دستگاه</h2>
   <div id="modelStatus" class="status">مدل هنوز بارگذاری نشده است.</div>
    <details id="debugPanel" class="small hidden" style="margin:10px 0;padding:10px;border:1px solid #86513b;border-radius:10px"><summary>جزئیات فنی خطا (برای بررسی)</summary><pre id="debugText" style="white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left"></pre></details>
   <div class="row">
-   <button id="loadBtn" disabled>بارگذاری مدل محلی (حدود ۸۰۰ مگابایت)</button>
+   <button id="loadBtn" disabled>بارگذاری مدل سبک محلی (حدود ۱۲۰ مگابایت)</button>
    <button id="clearBtn" type="button" style="background:#263b52">پاک‌کردن پیام‌ها</button>
   </div>
   <div class="progress"><div id="bar" class="bar"></div></div>
@@ -54,7 +54,7 @@ a{color:#8bdcff}.hidden{display:none!important}
  <p class="small"><a href="./">بازگشت به GAMESCOPE PRO</a></p>
 </main>
 <script type="module">
-const MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
+const MODEL_ID = "onnx-community/SmolLM2-135M-Instruct-ONNX-GQA";
 const deviceStatus = document.getElementById("deviceStatus");
 const modelStatus = document.getElementById("modelStatus");
 const loadBtn = document.getElementById("loadBtn");
@@ -112,7 +112,7 @@ loadBtn.addEventListener("click", async () => {
     const { pipeline } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2");
     generator = await pipeline("text-generation", MODEL_ID, {
       device: "webgpu",
-      dtype: "q4",
+      dtype: "q4f16",
       progress_callback: (event) => {
         const p = typeof event.progress === "number" ? event.progress : null;
         const name = event.file || event.name || "فایل مدل";
@@ -149,7 +149,7 @@ askBtn.addEventListener("click", async () => {
       {role:"system",content:"You are GAMESCOPE AI, a friendly assistant focused on video games, PlayStation, Xbox, and PC. Reply in the same language as the user; when the user writes Persian, answer naturally in Persian. Be concise, age-appropriate, and honest. You are running offline: do not claim to know current news or live release dates. Never invent facts or sources. Do not reveal private reasoning; give the answer directly."},
       {role:"user",content:text}
     ];
-    const result = await generator(messages,{max_new_tokens:180,do_sample:false});
+    const result = await generator(messages,{max_new_tokens:96,do_sample:false});
     const generated = result?.[0]?.generated_text;
     let answer = Array.isArray(generated) ? (generated[generated.length-1]?.content || "") : String(generated || "");
     answer = answer.replace(/<think>[\s\S]*?<\/think>/g,"").trim();
