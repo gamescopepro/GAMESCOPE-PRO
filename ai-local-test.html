@@ -53,7 +53,7 @@ a{color:#8bdcff}.hidden{display:none!important}
  <p class="small"><a href="./">بازگشت به GAMESCOPE PRO</a></p>
 </main>
 <script type="module">
-const MODEL_ID = "onnx-community/Qwen3-0.6B-Instruct-ONNX";
+const MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
 const deviceStatus = document.getElementById("deviceStatus");
 const modelStatus = document.getElementById("modelStatus");
 const loadBtn = document.getElementById("loadBtn");
@@ -106,12 +106,10 @@ loadBtn.addEventListener("click", async () => {
   modelStatus.textContent = "در حال آماده‌سازی موتور محلی…";
   progress(0,"در حال اتصال به کتابخانه و بررسی فایل‌های مدل…");
   try {
-    const { pipeline, ModelRegistry } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
-    const dtypes = await ModelRegistry.get_available_dtypes(MODEL_ID);
-    if (!dtypes.includes("q4f16")) throw new Error("نسخهٔ کم‌حجم q4f16 برای این مدل پیدا نشد.");
+    const { pipeline } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
     generator = await pipeline("text-generation", MODEL_ID, {
       device: "webgpu",
-      dtype: "q4f16",
+      dtype: "q4",
       progress_callback: (event) => {
         const p = typeof event.progress === "number" ? event.progress : null;
         const name = event.file || event.name || "فایل مدل";
