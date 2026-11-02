@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#071321">
+<title>GAMESCOPE AI | آزمایش هوش مصنوعی محلی</title>
+<style>
+:root{color-scheme:dark;--bg:#071321;--panel:#10243a;--line:#294b6b;--cyan:#57dfff;--muted:#a9bfd3}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#12365b,#071321 60%);color:#f1f7ff;font:15px Tahoma,Arial,sans-serif;min-height:100vh;padding:22px}
+main{max-width:760px;margin:auto}.card{background:#0c1c2e;border:1px solid var(--line);border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 12px 36px #0004}
+h1{font-size:23px;margin:0 0 8px}.sub{color:var(--muted);font-size:13px;line-height:1.9}
+.status{padding:12px;border:1px solid #345574;border-radius:12px;background:#0b2034;line-height:1.9;font-size:13px;margin:10px 0}
+.status.good{border-color:#267b61;background:#0b2b28}.status.bad{border-color:#86513b;background:#2a1c18}
+button{border:0;border-radius:12px;padding:12px 16px;background:linear-gradient(135deg,#1689dc,#087bbd);color:white;font-weight:bold;font:inherit;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}textarea{width:100%;min-height:85px;resize:vertical;background:#071624;color:white;border:1px solid var(--line);border-radius:12px;padding:12px;font:14px Tahoma}
+#chat{display:flex;flex-direction:column;gap:9px;margin-top:12px}.msg{white-space:pre-wrap;overflow-wrap:anywhere;padding:11px 13px;border-radius:13px;line-height:1.9;font-size:13px}.user{background:#124b78;align-self:flex-start;max-width:92%}.bot{background:#152d42;align-self:flex-end;max-width:95%}
+.progress{height:9px;background:#1b3148;border-radius:99px;overflow:hidden;margin:10px 0}.bar{height:100%;width:0;background:linear-gradient(90deg,#1689dc,#57dfff);transition:width .2s}
+.small{color:var(--muted);font-size:11px;line-height:1.9}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.row button{flex:0 0 auto}
+a{color:#8bdcff}.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main>
+ <div class="card">
+  <h1>🧪 آزمایش GAMESCOPE AI محلی</h1>
+  <div class="sub">این صفحه فقط برای آزمایش است و به هوش مصنوعی فعلی سایت دست نمی‌زند. هدف این است که ببینیم آیا مرورگر و دستگاه می‌توانند یک مدل هوش مصنوعی را روی خود دستگاه اجرا کنند یا نه.</div>
+  <div id="deviceStatus" class="status">در حال بررسی قابلیت‌های مرورگر…</div>
+  <div class="small">مدل آزمایشی: Qwen3-0.6B Instruct با Transformers.js. برای اجرای محلی، مرورگر سازگار با WebGPU لازم است. دانلود اولیه مدل حدود ۶۵۰ مگابایت است؛ فقط با زدن دکمه زیر شروع می‌شود. سؤال‌ها پس از بارگذاری مدل روی دستگاه پردازش می‌شوند و به API هوش مصنوعی ارسال نمی‌شوند.</div>
+ </div>
+ <div class="card">
+  <h2 style="font-size:17px;margin:0 0 10px">۱) بررسی دستگاه</h2>
+  <div id="modelStatus" class="status">مدل هنوز بارگذاری نشده است.</div>
+  <div class="row">
+   <button id="loadBtn" disabled>بارگذاری مدل محلی (حدود ۶۵۰ مگابایت)</button>
+   <button id="clearBtn" type="button" style="background:#263b52">پاک‌کردن پیام‌ها</button>
+  </div>
+  <div class="progress"><div id="bar" class="bar"></div></div>
+  <div id="progressText" class="small">هنوز دانلودی شروع نشده است.</div>
+ </div>
+ <div class="card">
+  <h2 style="font-size:17px;margin:0 0 10px">۲) آزمایش گفت‌وگو</h2>
+  <textarea id="question" maxlength="1200" placeholder="مثلاً: سلام، درباره بازی‌های ویدیویی چه کمکی می‌تونی بکنی؟" disabled></textarea>
+  <div class="row" style="margin-top:9px"><button id="askBtn" disabled>پرسیدن از هوش مصنوعی محلی</button></div>
+  <div id="chat" aria-live="polite"></div>
+ </div>
+ <div class="card small">
+  <b>نکته‌های مهم</b><br>
+  • اگر WebGPU در دستگاه پشتیبانی نشود یا درایور گرافیک خطا بدهد، مدل اجرا نمی‌شود؛ هیچ چیزی در سایت اصلی تغییر نمی‌کند.<br>
+  • مدل کوچک آزمایشی ممکن است در پاسخ‌های فارسی یا اطلاعات تخصصی بازی‌ها اشتباه کند. برای تاریخ انتشار و خبرهای جدید باید بعداً اطلاعات به‌روز و منابع رسمی به آن وصل شوند.<br>
+  • فایل مدل از Hugging Face دریافت می‌شود و ممکن است مرورگر فضای ذخیره‌سازی آن را در آینده پاک کند.
+ </div>
+ <p class="small"><a href="./">بازگشت به GAMESCOPE PRO</a></p>
+</main>
+<script type="module">
+const MODEL_ID = "onnx-community/Qwen3-0.6B-Instruct-ONNX";
+const deviceStatus = document.getElementById("deviceStatus");
+const modelStatus = document.getElementById("modelStatus");
+const loadBtn = document.getElementById("loadBtn");
+const askBtn = document.getElementById("askBtn");
+const question = document.getElementById("question");
+const chat = document.getElementById("chat");
+const bar = document.getElementById("bar");
+const progressText = document.getElementById("progressText");
+let generator = null;
+let busy = false;
+let webgpuAdapter = null;
+
+function addMessage(text, role) {
+  const el = document.createElement("div");
+  el.className = "msg " + role;
+  el.textContent = text;
+  chat.appendChild(el);
+  el.scrollIntoView({block:"end",behavior:"smooth"});
+  return el;
+}
+function progress(percent, label) {
+  if (Number.isFinite(percent)) bar.style.width = Math.max(0,Math.min(100,percent)) + "%";
+  progressText.textContent = label;
+}
+async function checkDevice() {
+  const memory = navigator.deviceMemory ? navigator.deviceMemory + " GB (تقریبی)" : "نامشخص";
+  const threads = navigator.hardwareConcurrency || "نامشخص";
+  let text = "حافظهٔ تقریبی دستگاه: " + memory + " | رشته‌های پردازنده: " + threads + ". ";
+  if (!("gpu" in navigator)) {
+    deviceStatus.className = "status bad";
+    deviceStatus.textContent = text + "WebGPU در این مرورگر در دسترس نیست. فعلاً مدل را دانلود نکن؛ این دستگاه برای اجرای آزمایشی با GPU آماده نیست.";
+    return;
+  }
+  try {
+    webgpuAdapter = await navigator.gpu.requestAdapter({powerPreference:"low-power"});
+    if (!webgpuAdapter) throw new Error("adapter_not_found");
+    deviceStatus.className = "status good";
+    deviceStatus.textContent = text + "WebGPU پیدا شد. این فقط بررسی اولیه است؛ اجرای واقعی مدل هنوز باید آزمایش شود.";
+    loadBtn.disabled = false;
+  } catch (e) {
+    deviceStatus.className = "status bad";
+    deviceStatus.textContent = text + "مرورگر WebGPU دارد اما نتوانست آداپتور گرافیکی فعال پیدا کند. مدل دانلود نمی‌شود.";
+  }
+}
+await checkDevice();
+
+loadBtn.addEventListener("click", async () => {
+  if (generator || busy || !webgpuAdapter) return;
+  busy = true; loadBtn.disabled = true;
+  modelStatus.textContent = "در حال آماده‌سازی موتور محلی…";
+  progress(0,"در حال اتصال به کتابخانه و بررسی فایل‌های مدل…");
+  try {
+    const { pipeline, ModelRegistry } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
+    const dtypes = await ModelRegistry.get_available_dtypes(MODEL_ID);
+    if (!dtypes.includes("q4f16")) throw new Error("نسخهٔ کم‌حجم q4f16 برای این مدل پیدا نشد.");
+    generator = await pipeline("text-generation", MODEL_ID, {
+      device: "webgpu",
+      dtype: "q4f16",
+      progress_callback: (event) => {
+        const p = typeof event.progress === "number" ? event.progress : null;
+        const name = event.file || event.name || "فایل مدل";
+        const status = event.status || "loading";
+        progress(p, status + " — " + name + (p !== null ? " — " + Math.round(p) + "%" : ""));
+      }
+    });
+    modelStatus.className = "status good";
+    modelStatus.textContent = "مدل روی این دستگاه بارگذاری شد. حالا یک سؤال آزمایشی بپرس.";
+    progress(100,"مدل آماده است؛ در دفعات بعد ممکن است از حافظهٔ مرورگر استفاده شود.");
+    question.disabled = false; askBtn.disabled = false;
+  } catch (error) {
+    generator = null;
+    modelStatus.className = "status bad";
+    modelStatus.textContent = "بارگذاری مدل موفق نشد: " + (error?.message || "خطای ناشناخته") + " . ممکن است محدودیت مرورگر، حافظه یا درایور گرافیک باشد.";
+    progress(null,"دانلود/بارگذاری کامل نشد. برای جلوگیری از مصرف بیشتر، دوباره خودکار تلاش نمی‌کنیم.");
+    loadBtn.disabled = false;
+  } finally { busy = false; }
+});
+
+askBtn.addEventListener("click", async () => {
+  const text = question.value.trim();
+  if (!text || !generator || busy) return;
+  busy = true; askBtn.disabled = true; question.disabled = true;
+  addMessage(text,"user"); question.value = "";
+  const pending = addMessage("در حال تولید پاسخ روی همین دستگاه…","bot");
+  try {
+    const messages = [
+      {role:"system",content:"You are GAMESCOPE AI, a friendly assistant focused on video games, PlayStation, Xbox, and PC. Reply in the same language as the user; when the user writes Persian, answer naturally in Persian. Be concise, age-appropriate, and honest. You are running offline: do not claim to know current news or live release dates. Never invent facts or sources. Do not reveal private reasoning; give the answer directly."},
+      {role:"user",content:text}
+    ];
+    const result = await generator(messages,{max_new_tokens:180,do_sample:false});
+    const generated = result?.[0]?.generated_text;
+    let answer = Array.isArray(generated) ? (generated[generated.length-1]?.content || "") : String(generated || "");
+    answer = answer.replace(/<think>[\s\S]*?<\/think>/g,"").trim();
+    pending.textContent = answer || "مدل پاسخ متنی تولید نکرد.";
+  } catch (error) {
+    pending.textContent = "خطا هنگام پاسخ‌گویی: " + (error?.message || "خطای ناشناخته");
+  } finally {
+    busy = false; askBtn.disabled = false; question.disabled = false; question.focus();
+  }
+});
+document.getElementById("clearBtn").addEventListener("click",()=>{chat.replaceChildren();});
+question.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askBtn.click();}});
+</script>
+</body>
+</html>
