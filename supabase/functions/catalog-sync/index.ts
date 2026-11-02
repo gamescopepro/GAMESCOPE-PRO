@@ -151,25 +151,56 @@ function dateString(date: Date): string {
 }
 
 async function fetchJson(url: string, timeoutMs = 15000): Promise<any> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const result = await fetch(url, {
-      headers: { "Accept": "application/json" },
-      signal: controller.signal,
-    });
+  const host = new URL(url).hostname;
+  const retryableStatuses = new Set([408, 502, 503, 504]);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let result: Response;
+    try {
+      result = await fetch(url, {
+        headers: { "Accept": "application/json" },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      const retryableTransport = error instanceof Error &&
+        (error.name === "AbortError" || error instanceof TypeError);
+      if (attempt === 0 && retryableTransport) {
+        const delayMs = 900 + Math.floor(Math.random() * 350);
+        console.warn("Catalog upstream transport retry", JSON.stringify({
+          host, reason: error.name, delayMs,
+        }));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+
     const text = await result.text();
     let parsed: any = {};
     try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { detail: text.slice(0, 500) }; }
     if (!result.ok) {
+      if (attempt === 0 && retryableStatuses.has(result.status)) {
+        const retryAfter = Number(result.headers.get("retry-after") ?? "");
+        const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 2500)
+          : 900 + Math.floor(Math.random() * 350);
+        console.warn("Catalog upstream HTTP retry", JSON.stringify({
+          host, httpStatus: result.status, delayMs,
+        }));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
       const error = new Error("Upstream HTTP " + result.status + ": " + String(parsed?.detail ?? parsed?.error ?? "request failed").slice(0, 240));
       (error as any).status = result.status;
       throw error;
     }
     return parsed;
-  } finally {
-    clearTimeout(timer);
   }
+  throw new Error("Upstream retries exhausted");
 }
 
 async function fetchCategory(
