@@ -1919,6 +1919,7 @@ render();
 .gsai-msg.user{align-self:flex-start;background:#124d7b;border:1px solid #2b78ad}
 .gsai-msg.bot{align-self:flex-end;background:#122438;border:1px solid #28445e}
 .gsai-msg.note{align-self:stretch;max-width:100%;font-size:10px;color:#a9bfd3;background:#0b1b2b;border:1px solid #20364c}
+.gsai-sources{align-self:flex-end;max-width:90%;width:100%;padding:9px 11px;border:1px solid #285779;border-radius:12px;background:#0b1c2d;font-size:11px;line-height:1.8;color:#b9d8f2}.gsai-sources strong{display:block;margin-bottom:5px;color:#61dfff}.gsai-sources a{display:block;color:#8ed8ff;text-decoration:underline;overflow-wrap:anywhere;margin-top:3px}
 .gsai-quick{display:flex;gap:7px;overflow:auto;padding:0 12px 10px}
 .gsai-quick button{white-space:nowrap;border:1px solid #285779;background:#0d2941;color:#cfeaff;border-radius:999px;padding:7px 10px;font:11px Tahoma;cursor:pointer}
 .gsai-compose{display:flex;gap:8px;padding:12px;border-top:1px solid #203b55;background:#091a2b}
@@ -1930,7 +1931,7 @@ render();
 <button id="gsAiFab" type="button" aria-label="باز کردن GAMESCOPE AI">✨ GAMESCOPE AI</button>
 <section id="gsAiPanel" aria-label="گفت‌وگوی GAMESCOPE AI">
  <div class="gsai-head"><div><div class="gsai-title">✨ GAMESCOPE AI</div><div class="gsai-sub">دستیار هوشمند دنیای بازی‌ها</div></div><button id="gsAiClose" class="gsai-close" type="button" aria-label="بستن">×</button></div>
- <div id="gsAiMessages" aria-live="polite"><div class="gsai-msg bot">سلام! من GAMESCOPE AI هستم 🎮 هر سؤالی درباره بازی‌ها، پلتفرم‌ها، سازنده‌ها و تاریخ انتشار داری بپرس.</div><div class="gsai-msg note">نسخهٔ فعلی به جست‌وجوی زندهٔ اینترنت وصل نیست؛ خبرها و تاریخ‌های جدید را بدون منبع رسمی قطعی اعلام نمی‌کنم.</div></div>
+ <div id="gsAiMessages" aria-live="polite"><div class="gsai-msg bot">سلام! من GAMESCOPE AI هستم 🎮 هر سؤالی درباره بازی‌ها، پلتفرم‌ها، سازنده‌ها و تاریخ انتشار داری بپرس.</div><div class="gsai-msg note">برای سؤال‌های به‌روز، GAMESCOPE AI می‌تواند در وب جست‌وجو کند و لینک منابع را نمایش دهد. ممکن است جست‌وجوی رایگان محدودیت ماهانه داشته باشد.</div></div>
  <div class="gsai-quick"><button type="button">بهترین بازی‌های ۲۰۲۶</button><button type="button">GTA VI چه زمانی می‌آید؟</button><button type="button">فرق PS5 و Xbox چیست؟</button></div>
  <form id="gsAiForm" class="gsai-compose"><textarea id="gsAiInput" rows="1" maxlength="2500" placeholder="سؤالت درباره بازی‌ها را بنویس..." aria-label="پیام"></textarea><button id="gsAiSend" type="submit">ارسال</button></form>
 </section>
@@ -1955,6 +1956,19 @@ render();
    const data=await res.json().catch(()=>({}));
    if(!res.ok)throw new Error(data.message||"ارتباط با هوش مصنوعی برقرار نشد.");
    pending.textContent=data.answer;history.push({role:"model",text:data.answer});
+   if(Array.isArray(data.sources)&&data.sources.length){
+    const box=document.createElement("div");box.className="gsai-sources";
+    const heading=document.createElement("strong");heading.textContent="🌐 منابع وب";box.appendChild(heading);
+    data.sources.slice(0,6).forEach((source,index)=>{
+     try{
+      const url=new URL(source.url);
+      if(url.protocol!=="https:"&&url.protocol!=="http:")return;
+      const link=document.createElement("a");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";
+      link.textContent=(index+1)+". "+(source.title||url.hostname);box.appendChild(link);
+     }catch(_){}
+    });
+    if(box.children.length>1){messages.appendChild(box);messages.scrollTop=messages.scrollHeight;}
+   }
    if(history.length>8)history=history.slice(-8);
   }catch(err){pending.textContent=err.message||"خطایی رخ داد؛ دوباره تلاش کن.";history.pop();}
   finally{busy=false;send.disabled=false;input.focus();}
