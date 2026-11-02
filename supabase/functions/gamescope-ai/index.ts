@@ -42,7 +42,7 @@ function rateLimited(ip: string) {
 const SYSTEM_INSTRUCTION = `You are GAMESCOPE AI, the friendly video-game assistant inside GAMESCOPE PRO.
 Answer naturally in the user's language, especially Persian or English.
 Focus on video games, PlayStation, Xbox, PC, release dates, developers, publishers, genres, gaming hardware, and industry topics.
-Be clear, helpful, age-appropriate, and concise. Do not claim you searched the live web or checked today's news; this version has no live web search.
+Be clear, helpful, age-appropriate, and concise. Use Google Search grounding when current information is useful. Search the live web for recent gaming news, release dates, platform availability, prices, updates, and official announcements.
 For current news, rumors, release dates, prices, or availability, clearly say when you cannot verify them and recommend checking an official publisher, platform store, or studio source. Distinguish confirmed facts from rumors.
 Never invent sources, links, dates, prices, or citations. If unsure, say so.
 Do not ask for passwords, API keys, payment details, or private information.
@@ -91,8 +91,9 @@ Deno.serve(async (req: Request) => {
     const geminiPayload = JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       contents,
-      // Gemini 3.8 Flash defaults to medium thinking; low is faster for chat.
-      // Temperature is intentionally omitted for Gemini 3.6+ / 3.8.
+      tools: [{ google_search: {} }],
+      // Google Search grounding retrieves current web pages and provides source metadata.
+      // Temperature is intentionally omitted for Gemini 3.6+.
       generationConfig: {
         maxOutputTokens: 500,
         thinkingConfig: { thinkingLevel: "minimal" },
@@ -156,7 +157,19 @@ Deno.serve(async (req: Request) => {
     if (!answer) {
       return reply({ error: "empty_response", message: "پاسخ خالی دریافت شد؛ سؤال را کمی متفاوت بپرس." }, 502, origin);
     }
-    return reply({ answer, model: MODEL }, 200, origin);
+    const sourceChunks = data?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+    const sources = [];
+    const seenSources = new Set<string>();
+    for (const chunk of sourceChunks) {
+      const web = chunk?.web;
+      const uri = typeof web?.uri === "string" ? web.uri : "";
+      const title = typeof web?.title === "string" ? web.title : uri;
+      if (!uri || !/^https?:\/\//i.test(uri) || seenSources.has(uri)) continue;
+      seenSources.add(uri);
+      sources.push({ title: title.slice(0, 180), url: uri });
+      if (sources.length >= 6) break;
+    }
+    return reply({ answer, model: MODEL, sources, searchedWeb: sources.length > 0 }, 200, origin);
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "AbortError";
     const transportError = error instanceof TypeError;
