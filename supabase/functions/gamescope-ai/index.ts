@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ALLOWED_ORIGIN = "https://gamescopepro.github.io";
-const MODEL = "gemini-3.8-flash";
+const MODEL = "gemini-3.5-flash-lite";
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 8;
 const limits = new Map<string, { start: number; count: number }>();
@@ -95,7 +95,7 @@ Deno.serve(async (req: Request) => {
       // Temperature is intentionally omitted for Gemini 3.6+ / 3.8.
       generationConfig: {
         maxOutputTokens: 500,
-        thinkingConfig: { thinkingLevel: "low" },
+        thinkingConfig: { thinkingLevel: "minimal" },
       },
     });
     let upstream: Response | null = null;
