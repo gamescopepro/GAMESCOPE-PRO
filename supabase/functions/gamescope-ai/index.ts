@@ -91,15 +91,19 @@ Deno.serve(async (req: Request) => {
     const geminiPayload = JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       contents,
-      generationConfig: { temperature: 0.65, maxOutputTokens: 700 },
+      // Gemini 3.8 Flash defaults to medium thinking; low is faster for chat.
+      // Temperature is intentionally omitted for Gemini 3.6+ / 3.8.
+      generationConfig: {
+        maxOutputTokens: 500,
+        thinkingConfig: { thinkingLevel: "low" },
+      },
     });
-    const retryableStatuses = new Set([408, 500, 502, 503, 504]);
     let upstream: Response | null = null;
-    // Google recommends exponential backoff for transient 5xx/408 errors.
-    // Keep retries bounded; quota (429) and auth/configuration errors are not retried.
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Fail fast on stalled requests. Retry only an explicit 503 capacity response once;
+    // a network timeout is returned immediately rather than making users wait another 25s.
+    for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 35_000);
+      const timer = setTimeout(() => controller.abort(), 25_000);
       try {
         upstream = await fetch(geminiUrl, {
           method: "POST",
@@ -107,29 +111,12 @@ Deno.serve(async (req: Request) => {
           body: geminiPayload,
           signal: controller.signal,
         });
-      } catch (error) {
-        const retryableTransport = error instanceof Error &&
-          (error.name === "AbortError" || error instanceof TypeError);
-        if (attempt === 0 && retryableTransport) {
-          const delayMs = 1000 + Math.floor(Math.random() * 400);
-          console.warn("Gemini transport/timeout retry", JSON.stringify({
-            reason: error.name,
-            attempt: attempt + 1,
-            delayMs,
-          }));
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-          continue;
-        }
-        throw error;
       } finally {
         clearTimeout(timer);
       }
-      if (upstream.ok || !retryableStatuses.has(upstream.status) || attempt === 2) break;
-      const retryAfter = Number(upstream.headers.get("retry-after") ?? "");
-      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
-        ? Math.min(retryAfter * 1000, 3000)
-        : 800 * (2 ** attempt) + Math.floor(Math.random() * 350);
-      console.warn("Gemini transient response; retrying", JSON.stringify({
+      if (upstream.ok || upstream.status !== 503 || attempt === 1) break;
+      const delayMs = 1200 + Math.floor(Math.random() * 500);
+      console.warn("Gemini capacity response; retrying once", JSON.stringify({
         httpStatus: upstream.status,
         attempt: attempt + 1,
         delayMs,
