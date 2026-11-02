@@ -107,6 +107,20 @@ Deno.serve(async (req: Request) => {
           body: geminiPayload,
           signal: controller.signal,
         });
+      } catch (error) {
+        const retryableTransport = error instanceof Error &&
+          (error.name === "AbortError" || error instanceof TypeError);
+        if (attempt === 0 && retryableTransport) {
+          const delayMs = 1000 + Math.floor(Math.random() * 400);
+          console.warn("Gemini transport/timeout retry", JSON.stringify({
+            reason: error.name,
+            attempt: attempt + 1,
+            delayMs,
+          }));
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        throw error;
       } finally {
         clearTimeout(timer);
       }
