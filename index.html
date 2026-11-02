@@ -1905,5 +1905,64 @@ render();
 })();
 </script>
 
+
+<!-- GAMESCOPE_AI_WIDGET_V1 -->
+<style>
+#gsAiFab{position:fixed;z-index:9998;bottom:20px;right:20px;border:1px solid #55d9ff88;border-radius:999px;padding:13px 18px;background:linear-gradient(135deg,#087bdc,#10b9d5);color:#fff;font:700 14px Tahoma,Arial;box-shadow:0 8px 30px #0008;cursor:pointer}
+#gsAiPanel{position:fixed;z-index:9999;right:18px;bottom:78px;width:min(410px,calc(100vw - 24px));height:min(600px,calc(100dvh - 110px));display:none;flex-direction:column;overflow:hidden;border:1px solid #2e6794;border-radius:20px;background:#071321;color:#eff7ff;box-shadow:0 18px 55px #000b;font-family:Tahoma,Arial,sans-serif}
+#gsAiPanel.open{display:flex}
+.gsai-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(120deg,#123e6b,#09233e);border-bottom:1px solid #245078}
+.gsai-title{font-size:16px;font-weight:bold}.gsai-sub{font-size:11px;color:#b5d8f4;margin-top:5px}
+.gsai-close{border:0;background:#ffffff18;color:#fff;border-radius:9px;width:34px;height:34px;font-size:20px;cursor:pointer}
+#gsAiMessages{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:11px}
+.gsai-msg{max-width:90%;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:13px;padding:10px 12px;border-radius:14px}
+.gsai-msg.user{align-self:flex-start;background:#124d7b;border:1px solid #2b78ad}
+.gsai-msg.bot{align-self:flex-end;background:#122438;border:1px solid #28445e}
+.gsai-msg.note{align-self:stretch;max-width:100%;font-size:10px;color:#a9bfd3;background:#0b1b2b;border:1px solid #20364c}
+.gsai-quick{display:flex;gap:7px;overflow:auto;padding:0 12px 10px}
+.gsai-quick button{white-space:nowrap;border:1px solid #285779;background:#0d2941;color:#cfeaff;border-radius:999px;padding:7px 10px;font:11px Tahoma;cursor:pointer}
+.gsai-compose{display:flex;gap:8px;padding:12px;border-top:1px solid #203b55;background:#091a2b}
+#gsAiInput{min-width:0;flex:1;resize:none;max-height:100px;border:1px solid #2a4d6b;border-radius:12px;background:#0c2033;color:#fff;padding:10px;font:13px Tahoma;outline:none}
+#gsAiSend{border:0;border-radius:12px;padding:0 15px;background:#1689dc;color:white;font-weight:bold;cursor:pointer}
+#gsAiSend:disabled{opacity:.5;cursor:wait}
+@media(max-width:480px){#gsAiFab{bottom:14px;right:12px}#gsAiPanel{right:8px;bottom:68px;width:calc(100vw - 16px);height:min(72dvh,620px)}}
+</style>
+<button id="gsAiFab" type="button" aria-label="باز کردن GAMESCOPE AI">✨ GAMESCOPE AI</button>
+<section id="gsAiPanel" aria-label="گفت‌وگوی GAMESCOPE AI">
+ <div class="gsai-head"><div><div class="gsai-title">✨ GAMESCOPE AI</div><div class="gsai-sub">دستیار هوشمند دنیای بازی‌ها</div></div><button id="gsAiClose" class="gsai-close" type="button" aria-label="بستن">×</button></div>
+ <div id="gsAiMessages" aria-live="polite"><div class="gsai-msg bot">سلام! من GAMESCOPE AI هستم 🎮 هر سؤالی درباره بازی‌ها، پلتفرم‌ها، سازنده‌ها و تاریخ انتشار داری بپرس.</div><div class="gsai-msg note">نسخهٔ فعلی به جست‌وجوی زندهٔ اینترنت وصل نیست؛ خبرها و تاریخ‌های جدید را بدون منبع رسمی قطعی اعلام نمی‌کنم.</div></div>
+ <div class="gsai-quick"><button type="button">بهترین بازی‌های ۲۰۲۶</button><button type="button">GTA VI چه زمانی می‌آید؟</button><button type="button">فرق PS5 و Xbox چیست؟</button></div>
+ <form id="gsAiForm" class="gsai-compose"><textarea id="gsAiInput" rows="1" maxlength="2500" placeholder="سؤالت درباره بازی‌ها را بنویس..." aria-label="پیام"></textarea><button id="gsAiSend" type="submit">ارسال</button></form>
+</section>
+<script>
+(function(){
+ const endpoint="https://axwjiwpwqoykvcbumixy.supabase.co/functions/v1/gamescope-ai";
+ const publicKey="sb_publishable_QUBqbgVxbEpXlseeCIqeSA_BxPeDou-";
+ const panel=document.getElementById("gsAiPanel"),fab=document.getElementById("gsAiFab"),close=document.getElementById("gsAiClose");
+ const messages=document.getElementById("gsAiMessages"),form=document.getElementById("gsAiForm"),input=document.getElementById("gsAiInput"),send=document.getElementById("gsAiSend");
+ let history=[],busy=false;
+ function open(){panel.classList.add("open");fab.style.display="none";input.focus()}
+ function shut(){panel.classList.remove("open");fab.style.display="block"}
+ function add(text,who){const el=document.createElement("div");el.className="gsai-msg "+who;el.textContent=text;messages.appendChild(el);messages.scrollTop=messages.scrollHeight;return el}
+ fab.addEventListener("click",open);close.addEventListener("click",shut);
+ document.querySelectorAll(".gsai-quick button").forEach(b=>b.addEventListener("click",()=>{input.value=b.textContent;form.requestSubmit()}));
+ form.addEventListener("submit",async e=>{
+  e.preventDefault();const text=input.value.trim();if(!text||busy)return;
+  busy=true;send.disabled=true;input.value="";add(text,"user");history.push({role:"user",text});
+  const pending=add("دارم فکر می‌کنم…","bot");
+  try{
+   const res=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json","apikey":publicKey},body:JSON.stringify({history})});
+   const data=await res.json().catch(()=>({}));
+   if(!res.ok)throw new Error(data.message||"ارتباط با هوش مصنوعی برقرار نشد.");
+   pending.textContent=data.answer;history.push({role:"model",text:data.answer});
+   if(history.length>8)history=history.slice(-8);
+  }catch(err){pending.textContent=err.message||"خطایی رخ داد؛ دوباره تلاش کن.";history.pop();}
+  finally{busy=false;send.disabled=false;input.focus();}
+ });
+ input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+})();
+</script>
+<!-- /GAMESCOPE_AI_WIDGET_V1 -->
+
 </body>
 </html>
