@@ -1150,6 +1150,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
           platforms: hasPc ? currentPlatforms : (currentPlatforms ? currentPlatforms + ", PC" : "PC"),
           // Preserve an existing store page; a PC store search is still available in the UI.
           store_url: sameTitle.store_url || steamUrl,
+          cover: sameTitle.cover || ("https://shared.steamstatic.com/store_item_assets/steam/apps/" + app.appid + "/header.jpg"),
           updated_at: nowIso,
         };
         catalogWrites.set(String(next.id), next);
@@ -1170,6 +1171,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
           release_date: existingById?.release_date ?? null,
           release_status: existingById?.release_status || "unknown",
           store_url: steamUrl,
+          cover: existingById?.cover || ("https://shared.steamstatic.com/store_item_assets/steam/apps/" + app.appid + "/header.jpg"),
           is_hidden: false,
           is_builtin: existingById?.is_builtin ?? false,
           updated_at: nowIso,
@@ -1360,6 +1362,8 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
           updated_at: new Date().toISOString(),
         };
         if (!String(sameTitle.publisher ?? "").trim() && publisher) patch.publisher = publisher;
+        const officialHeader = String(game?.header_image ?? "").trim();
+        if (officialHeader && officialHeader !== String(sameTitle.cover ?? "").trim()) patch.cover = officialHeader;
         if (!sameTitle.release_date && releaseDate) patch.release_date = releaseDate;
         if ((sameTitle.release_status || "unknown") === "unknown" && releaseStatus !== "unknown") {
           patch.release_status = releaseStatus;
