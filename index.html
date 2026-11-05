@@ -402,7 +402,7 @@ function siteCatalogRowToRawg(row){
  return {
   id:source==="rawg"?Number(sourceId):String(row.id),name:String(row.title),slug,released:row.release_date||"",
   rating:Number.isFinite(critic)?critic/2:null,metacritic:Number.isFinite(critic)?critic*10:null,
-  background_image:"",genres:row.genre?[{name:String(row.genre)}]:[],
+  background_image:String(row.cover||(/^steam_(\d+)$/.exec(String(row.id||""))?("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"+/^steam_(\d+)$/.exec(String(row.id||""))[1]+"/header.jpg"):"")).trim(),genres:row.genre?[{name:String(row.genre)}]:[],
   platforms:platformNames.map(name=>({platform:{name}})),
   publishers:publisherNames.map(name=>({name})),developers:[],
   storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":source==="gog"?"https://www.gog.com/":gameStoreLinks({name:String(row.title),platforms:platformNames.map(name=>({platform:{name}}))})[0]?.url||""),
@@ -994,7 +994,8 @@ document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFull
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
 
 function gameCoverMarkup(g){
- const cover=String(g.cover||"").trim(),state=cover?"has-cover":"cover-missing";
+ const steamId=/^steam_(\d+)$/.exec(String(g.id||""))?.[1];
+ const cover=String(g.cover||(steamId?"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"+steamId+"/header.jpg":"")).trim(),state=cover?"has-cover":"cover-missing";
  const image=cover?'<img src="'+esc(cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">':"";
  return '<div class="cover '+state+'"><span class="cover-fallback">'+esc(g.emoji||"🎮")+'</span>'+image+'</div>';
 }
@@ -1203,7 +1204,7 @@ render();
    genre:row.genre??"ژانر نامشخص",platforms:row.platforms??"نامشخص",
    emoji:row.emoji??"🎮",critic:row.critic??null,publisher:row.publisher??null,
    release_date:row.release_date??null,release_status:row.release_status??"unknown",
-   store_url:row.store_url??null,is_hidden:row.is_hidden??false,
+   store_url:row.store_url??null,cover:row.cover??null,is_hidden:row.is_hidden??false,
    is_builtin:row.is_builtin??false,updated_at:row.updated_at??new Date().toISOString()
   };
  }
@@ -1218,7 +1219,7 @@ render();
  let publicCatalogFirstPage=null,publicCatalogFirstPageAt=0,publicCatalogNextOffset=0,publicCatalogHasMore=true,publicCatalogPageBusy=false;
  async function fetchVisibleCatalogPage(offset,limit,searchTerm=""){
   let query=client.from("site_catalog")
-   .select("id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,updated_at")
+   .select("id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,cover,updated_at")
    .eq("is_hidden",false);
   if(searchTerm){
    const safeTerm=String(searchTerm).replace(/[%_]/g," ");
@@ -1290,13 +1291,14 @@ render();
     if(mergedPlatformNames.length)next.platforms=mergedPlatformNames.join("، ");
     if((next.critic===null||next.critic===undefined)&&typeof game.metacritic==="number")next.critic=Math.round(game.metacritic)/10;
     if((!next.store_url||!String(next.store_url).trim()))next.store_url=storeUrl;
+     if((!next.cover||!String(next.cover).trim())&&typeof game.background_image==="string"&&game.background_image.trim())next.cover=game.background_image.trim();
     if(!next.emoji)next.emoji="🎮";
     if(next.release_status!==releaseStatus)next.release_status=releaseStatus;
-    const fields=["publisher","release_date","genre","critic","store_url","emoji","release_status","platforms"];
+    const fields=["publisher","release_date","genre","critic","store_url","cover","emoji","release_status","platforms"];
     const changed=fields.some(k=>String(next[k]??"")!==String(existing[k]??""));
     if(changed){next.updated_at=new Date().toISOString();batch.push(next);byId.set(String(next.id),next);byTitle.set(normalizeGameName(next.title),next);updated++;changeItems.push({kind:"base",title:next.title,text:"اطلاعات کاتالوگ به‌روزرسانی شد"+(next.publisher?" • شرکت: "+next.publisher:"")+" • وضعیت: "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"نامشخص")});}
    }else{
-    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",platforms:platformNames.join("، ")||"نامشخص",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl||null,is_hidden:false,is_builtin:false};
+    const next={id:rawId,title:game.name,genre:genre||"ژانر نامشخص",platforms:platformNames.join("، ")||"نامشخص",emoji:"🎮",critic:typeof game.metacritic==="number"?Math.round(game.metacritic)/10:null,publisher:names.join(" • ")||null,release_date:releaseDate,release_status:releaseStatus,store_url:storeUrl||null,cover:typeof game.background_image==="string"&&game.background_image.trim()?game.background_image.trim():null,is_hidden:false,is_builtin:false};
     batch.push(next);byId.set(rawId,next);byTitle.set(normalizeGameName(next.title),next);added++;
     changeItems.push({kind:"new",title:next.title,text:"به کاتالوگ عمومی افزوده شد"+(next.publisher?" • شرکت: "+next.publisher:" • اطلاعات شرکت هنوز در RAWG موجود نیست")+" • "+(releaseStatus==="upcoming"?"بازی آینده":releaseStatus==="released"?"منتشر شده":"وضعیت انتشار نامشخص")});
    }
@@ -1384,7 +1386,7 @@ render();
   if(ct!==""&&(!Number.isFinite(Number(ct))||Number(ct)<0||Number(ct)>10)){adminStatus("امتیاز باید بین صفر تا ده باشد.");return;}
   if(url){try{const u=new URL(url);if(!["http:","https:"].includes(u.protocol))throw Error();}catch(e){adminStatus("لینک فروشگاه باید با https:// یا http:// شروع شود.");return;}}
   const old=adminEditingRecord;
-  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",platforms:platformsText,emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
+  const row={id:old?old.id:"site_"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"_"+Math.random().toString(36).slice(2)),title,genre:$("gsAdminGameGenre").value.trim()||"ژانر نامشخص",platforms:platformsText,emoji:$("gsAdminGameEmoji").value.trim()||"🎮",critic:ct===""?null:Number(ct),publisher:$("gsAdminPublisher").value.trim()||null,release_date:$("gsAdminReleaseDate").value||null,release_status:$("gsAdminReleaseStatus").value,store_url:url||null,cover:old?.cover??null,is_hidden:old?!!old.is_hidden:false,is_builtin:old?!!old.is_builtin:false,updated_at:new Date().toISOString()};
   const b=$("gsAdminSaveGame");b.disabled=true;const {error}=await client.from("site_catalog").upsert(row,{onConflict:"id"});b.disabled=false;
   if(error){adminStatus("ذخیره در پایگاه داده ناموفق بود: "+error.message);return;}
   clearAdminForm();await loadGlobalCatalog();adminStatus(old?"ویرایش برای همه ذخیره شد.":"بازی جدید به کاتالوگ عمومی همه اضافه شد.");
@@ -1424,16 +1426,20 @@ render();
   updateSettingsAccount(user);
   if(!user){setOwnerUI(false);$("gsOwnerPanel")?.classList.add("hidden");if($("gsOwnerMessage"))$("gsOwnerMessage").textContent="برای دسترسی ویژه، از بخش ورود اختصاصی مالک استفاده کن."} if(user)$("gsWelcome").textContent="سلام "+(username||user.user_metadata?.username||user.email)+"! حساب GAMESCOPE فعال است.";
  }
+ function toCloudGameRow(g,userId){
+  const timestamp=Math.max(Date.now(),Number(g.updated||0));
+  return {user_id:userId,game_id:String(g.id),game_title:String(g.title||"بازی"),in_library:!!g.owned,is_favorite:!!g.fav,rating:g.rating==null||g.rating===""?null:Number(g.rating),note:String(g.note||"").slice(0,3000),game_status:String(g.status||"در فهرست علاقه‌مندی"),game_genre:String(g.genre||"ژانر نامشخص"),game_emoji:String(g.emoji||"🎮"),game_critic:g.critic==null||g.critic===""?null:Number(g.critic),game_cover:String(g.cover||""),game_platforms:String(g.platforms||""),game_publisher:String(g.publisher||""),game_release_date:g.releaseDate||null,game_release_status:String(g.releaseStatus||"unknown"),game_store_url:String(g.storeUrl||""),game_created:Number(g.created||Date.now()),updated_at:new Date(timestamp).toISOString()};
+ }
  async function syncDown(){
   if(!currentUser||syncing)return;syncing=true;
   try{
    const {data,error}=await client.from("user_games").select("*").eq("user_id",currentUser.id);if(error)throw error;
    const cloud=(data||[]).map(r=>({id:r.game_id,title:r.game_title,genre:r.game_genre||"ژانر نامشخص",emoji:r.game_emoji||"🎮",critic:r.game_critic==null?null:Number(r.game_critic),cover:r.game_cover||"",platforms:r.game_platforms||"",publisher:r.game_publisher||"",releaseDate:r.game_release_date||"",releaseStatus:r.game_release_status||"unknown",storeUrl:r.game_store_url||"",owned:!!r.in_library,fav:!!r.is_favorite,status:r.game_status||"در فهرست علاقه‌مندی",rating:r.rating==null?null:Number(r.rating),note:r.note||"",created:r.game_created||Date.parse(r.created_at)||Date.now(),updated:Date.parse(r.updated_at)||0}));
-   const local=JSON.parse(localStorage.getItem("sadra_pshub_v1")||"[]"), map=new Map(cloud.map(g=>[String(g.id),g])), remoteRows=new Map((data||[]).map(r=>[String(r.game_id),r]));
+   const local=JSON.parse(localStorage.getItem("sadra_pshub_v1")||"[]"), map=new Map(cloud.map(g=>[String(g.id),g])), remoteRows=new Map((data||[]).map(r=>[String(r.game_id),r])), pendingUploads=[];
    local.forEach(g=>{
-    const key=String(g.id);if(!map.has(key)){map.set(key,g);return}
+    const key=String(g.id);if(!map.has(key)){map.set(key,g);pendingUploads.push(g);return}
     const remote=map.get(key),raw=remoteRows.get(key),localNewer=Number(g.updated||0)>(Date.parse(raw?.updated_at)||0);
-    map.set(key,{...g,...remote,
+    const merged={...g,...remote,
      owned:localNewer?!!g.owned:remote.owned,fav:localNewer?!!g.fav:remote.fav,
      status:localNewer?g.status:(raw?.game_status?remote.status:(g.status||remote.status)),
      rating:localNewer?g.rating:remote.rating,note:localNewer?g.note:remote.note,
@@ -1442,10 +1448,17 @@ render();
      platforms:raw?.game_platforms?remote.platforms:(g.platforms||remote.platforms),publisher:raw?.game_publisher?remote.publisher:(g.publisher||remote.publisher),
      releaseDate:raw?.game_release_date?remote.releaseDate:(g.releaseDate||remote.releaseDate),releaseStatus:raw?.game_release_status?remote.releaseStatus:(g.releaseStatus||remote.releaseStatus),
      storeUrl:raw?.game_store_url?remote.storeUrl:(g.storeUrl||remote.storeUrl),created:raw?.game_created!=null?remote.created:(g.created||remote.created),updated:Math.max(Number(g.updated||0),Number(remote.updated||0))
-    });
+    };
+    map.set(key,merged);if(localNewer)pendingUploads.push(merged);
    });
    window.__gamescopeCloudLoading=true;localStorage.setItem("sadra_pshub_v1",JSON.stringify([...map.values()]));window.__gamescopeCloudLoading=false;
-   if(window.gamescopeReload)window.gamescopeReload();say("حساب متصل است؛ اطلاعات ابری بارگذاری شد.");
+   if(window.gamescopeReload)window.gamescopeReload();
+   for(let offset=0;offset<pendingUploads.length;offset+=50){
+    const rows=pendingUploads.slice(offset,offset+50).map(g=>toCloudGameRow(g,currentUser.id));
+    const {error:uploadError}=await client.from("user_games").upsert(rows,{onConflict:"user_id,game_id"});
+    if(uploadError)throw new Error("اطلاعات محلی در دستگاه باقی ماند، اما ارسال آن به فضای ابری ناموفق بود: "+uploadError.message);
+   }
+   say(pendingUploads.length?"حساب متصل شد؛ "+pendingUploads.length+" بازی محلی همگام شد.":"حساب متصل است؛ اطلاعات ابری بارگذاری شد.");
   }catch(e){window.__gamescopeCloudLoading=false;say("خطا در دریافت اطلاعات ابری: "+(e.message||"دسترسی ناموفق"))}finally{syncing=false}
  }
  window.gamescopeSyncGame=async g=>{
