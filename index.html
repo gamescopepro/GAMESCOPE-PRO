@@ -1002,7 +1002,7 @@ window.gamescopeCoverImageError=function(img){
   try{candidates=JSON.parse(img.dataset.coverFallbacks||"[]")}catch(e){}
   if(!candidates.length){
    const current=String(img.currentSrc||img.src||"");
-   const appId=(/\\/apps\\/(\\d+)(?:\\/|$)/.exec(current)||[])[1]||"";
+   const appId=(/\/apps\/(\d+)(?:\/|$)/.exec(current)||[])[1]||"";
    candidates=[current];
    if(current.includes("shared.steamstatic.com"))candidates.push(current.replace("shared.steamstatic.com","shared.akamai.steamstatic.com"));
    if(current.includes("shared.akamai.steamstatic.com"))candidates.push(current.replace("shared.akamai.steamstatic.com","shared.steamstatic.com"));
