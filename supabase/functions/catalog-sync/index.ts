@@ -1390,6 +1390,7 @@ async function syncSteamCatalog(): Promise<SteamSyncResult> {
             ? releaseStatus
             : (target?.release_status || "unknown"),
           store_url: steamUrl,
+          cover: String(game?.header_image ?? "").trim() || String(target?.cover ?? "").trim() || null,
           is_hidden: false,
           is_builtin: target?.is_builtin ?? false,
           updated_at: new Date().toISOString(),
