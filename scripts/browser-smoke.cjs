@@ -11,7 +11,7 @@ const FIXTURE = {
   name: GAME_TITLE,
   slug: "gamescope-test-quest",
   released: "2025-06-01",
-  background_image: "",
+  background_image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3C/svg%3E",
   rating: 4.2,
   metacritic: 84,
   genres: [{ name: "Adventure" }],
@@ -23,6 +23,7 @@ const FIXTURE = {
   ]
 };
 let observedSearchQuery = false;
+let capturedCloudUploads = [];
 const MOBILE_ONLY_FIXTURE = {
   id: 900002,
   name: "GAMESCOPE Mobile Only Must Be Filtered",
@@ -103,11 +104,20 @@ async function mockSupabase(route) {
     });
   }
 
+  if (pathname.endsWith("/rest/v1/user_games")) {
+    if (request.method() === "POST") {
+      try {
+        const body = request.postDataJSON();
+        capturedCloudUploads.push(...(Array.isArray(body) ? body : body ? [body] : []));
+      } catch {}
+    }
+    return sendJson(route, []);
+  }
+
   if (
     pathname.endsWith("/rest/v1/site_catalog") ||
     pathname.endsWith("/rest/v1/site_update_runs") ||
-    pathname.endsWith("/rest/v1/profiles") ||
-    pathname.endsWith("/rest/v1/user_games")
+    pathname.endsWith("/rest/v1/profiles")
   ) {
     return sendJson(route, []);
   }
@@ -155,11 +165,33 @@ async function main() {
     const context = await browser.newContext({ acceptDownloads: true });
     await context.route("https://axwjiwpwqoykvcbumixy.supabase.co/**", mockSupabase);
     const page = await context.newPage();
+    await context.addInitScript(() => {
+      const now = Date.now();
+      localStorage.setItem("sadra_pshub_v1", JSON.stringify([{
+        id: "offline_sync_probe", title: "GAMESCOPE Offline Sync Probe", genre: "Test", emoji: "🎮",
+        cover: "", platforms: "PC", owned: false, fav: false, status: "در فهرست علاقه‌مندی",
+        rating: null, note: "", created: now - 5000, updated: now - 3000
+      }]));
+      const userId = "00000000-0000-4000-8000-000000000123";
+      const nowSeconds = Math.floor(now / 1000);
+      const payload = btoa(JSON.stringify({ sub: userId, role: "authenticated", aud: "authenticated", exp: nowSeconds + 3600, iat: nowSeconds }));
+      const token = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." + payload.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "") + ".mock";
+      localStorage.setItem("sb-axwjiwpwqoykvcbumixy-auth-token", JSON.stringify({
+        access_token: token, token_type: "bearer", expires_in: 3600, expires_at: nowSeconds + 3600,
+        refresh_token: "gamescope-smoke-refresh", user: {
+          id: userId, aud: "authenticated", role: "authenticated", email: "smoke@example.invalid",
+          app_metadata: { provider: "email", providers: ["email"] }, user_metadata: { username: "smoketest" },
+          created_at: new Date(now).toISOString(), email_confirmed_at: new Date(now).toISOString()
+        }
+      }));
+    });
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.goto("http://127.0.0.1:" + PORT + "/", { waitUntil: "domcontentloaded" });
     await page.locator("#onlineSearch").waitFor({ state: "visible" });
+    await page.waitForFunction(() => (document.querySelector("#gsAuthMessage")?.textContent || "").includes("بازی محلی همگام شد"), null, { timeout: 15000 });
+    assert(capturedCloudUploads.some(row => row.game_id === "offline_sync_probe"), "A local-only game was not uploaded to the signed-in cloud account.");
     await page.waitForFunction(() => {
       const status = document.querySelector("#onlineStatus")?.textContent || "";
       return status.length > 0 && !/در حال (جست‌وجو|دریافت)/.test(status);
@@ -174,6 +206,7 @@ async function main() {
     }, GAME_TITLE, { timeout: 15000 });
     await onlineCard.waitFor({ state: "visible", timeout: 15000 });
     assert(observedSearchQuery, "The search term was not sent to the catalog proxy.");
+    assert(await onlineCard.locator(".cover img").count() === 1, "The online catalog card did not render its cover image.");
     assert(
       await page.locator("#onlineResults").getByText(MOBILE_ONLY_FIXTURE.name, { exact: true }).count() === 0,
       "A mobile-only game was shown in the supported-platform catalog."
@@ -182,6 +215,7 @@ async function main() {
     await onlineCard.locator('button[onclick^="addRawgGame("]').click();
     const personalCard = page.locator("#games article.card").filter({ hasText: GAME_TITLE }).first();
     await personalCard.waitFor({ state: "visible", timeout: 5000 });
+    assert(await personalCard.locator(".cover img").count() === 1, "The personal-library card did not preserve the saved cover image.");
 
     const savedBeforeLibrary = await page.evaluate(() => {
       const rows = JSON.parse(localStorage.getItem("sadra_pshub_v1") || "[]");
@@ -218,7 +252,8 @@ async function main() {
 
     assert(pageErrors.length === 0, "Browser JavaScript errors: " + pageErrors.join(" | "));
     console.log("GAMESCOPE PRO browser checks passed.");
-    console.log("- Online search rendered a supported PC + PlayStation fixture.");
+    console.log("- Online search rendered a supported PC + PlayStation fixture and its cover image.");
+    console.log("- A local-only game was uploaded through the mocked cloud sync path.");
     console.log("- Mobile-only fixture was filtered from search results.");
     console.log("- Add-to-personal-list and add-to-library flows worked.");
     console.log("- Playing status and local persistence survived a page reload.");
