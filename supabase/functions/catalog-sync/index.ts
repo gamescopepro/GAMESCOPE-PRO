@@ -259,7 +259,8 @@ async function fetchCategory(
   // If a deep platform cursor stalls before returning even one page, restart that
   // platform scan from page 1. This keeps the catalogue refresh moving instead of
   // leaving the cursor stuck on the same failing page forever. Upserts are idempotent.
-  if (error && options.parentPlatformId && startPage > 1 && pages === 0) {
+  const rawgOriginUnavailable = /\b(?:520|521|522|523|524)\b/.test(error || "");
+  if (error && !rawgOriginUnavailable && options.parentPlatformId && startPage > 1 && pages === 0) {
     console.warn("RAWG platform cursor failed; retrying from page 1", JSON.stringify({
       platformId: options.parentPlatformId,
       failedPage: startPage,
