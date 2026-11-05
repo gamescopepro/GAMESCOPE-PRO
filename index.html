@@ -501,7 +501,7 @@ function updateMergedOnlineCard(game){
  const imageUrl=String(game.background_image||"").trim();
  if(cover&&imageUrl&&!cover.querySelector("img")){
   cover.classList.remove("cover-missing");cover.classList.add("has-cover");
-  cover.insertAdjacentHTML("beforeend",'<img src="'+esc(imageUrl)+'" alt="کاور '+esc(game.name||"بازی")+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">');
+  cover.insertAdjacentHTML("beforeend",'<img src="'+esc(imageUrl)+'" alt="کاور '+esc(game.name||"بازی")+'" loading="lazy" decoding="async" onerror="window.gamescopeCoverImageError(this)" style="width:100%;height:100%;object-fit:cover">');
  }
 }
 function renderOnlineResults(results,append=false){
@@ -537,7 +537,7 @@ function renderOnlineResults(results,append=false){
   const genre=esc((g.genres||[]).map(x=>x.name).join("، ")||"ژانر نامشخص");
   const platforms=esc(onlinePlatformLabels(g).join("، ")||"پلتفرم نامشخص");
   const imageUrl=typeof g.background_image==="string"?g.background_image:"";
-  const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(&quot;has-cover&quot;);this.parentElement.classList.add(&quot;cover-missing&quot;)" style="width:100%;height:100%;object-fit:cover">':"";
+  const image=imageUrl?'<img src="'+esc(imageUrl)+'" alt="کاور '+title+'" loading="lazy" decoding="async" onerror="window.gamescopeCoverImageError(this)" style="width:100%;height:100%;object-fit:cover">':"";
   const release=esc(g.released||"تاریخ انتشار نامشخص");
   const rating=Number.isFinite(Number(g.rating))&&g.rating?Number(g.rating).toFixed(1):"—";
   const today=new Date().toISOString().slice(0,10);
@@ -996,10 +996,37 @@ document.getElementById("onlineMore").addEventListener("click",()=>{
 document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFullUpdate());
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
 
+window.gamescopeCoverImageError=function(img){
+ try{
+  let candidates=[];
+  try{candidates=JSON.parse(img.dataset.coverFallbacks||"[]")}catch(e){}
+  if(!candidates.length){
+   const current=String(img.currentSrc||img.src||"");
+   const appId=(/\\/apps\\/(\\d+)(?:\\/|$)/.exec(current)||[])[1]||"";
+   candidates=[current];
+   if(current.includes("shared.steamstatic.com"))candidates.push(current.replace("shared.steamstatic.com","shared.akamai.steamstatic.com"));
+   if(current.includes("shared.akamai.steamstatic.com"))candidates.push(current.replace("shared.akamai.steamstatic.com","shared.steamstatic.com"));
+   if(appId){
+    candidates.push("https://cdn.cloudflare.steamstatic.com/steam/apps/"+appId+"/header.jpg");
+    candidates.push("https://cdn.akamai.steamstatic.com/steam/apps/"+appId+"/header.jpg");
+   }
+   candidates=[...new Set(candidates.filter(Boolean))];
+   img.dataset.coverFallbacks=JSON.stringify(candidates);
+  }
+  const next=Number(img.dataset.coverFallbackIndex||0)+1;
+  if(next<candidates.length){
+   img.dataset.coverFallbackIndex=String(next);
+   img.src=candidates[next];
+   return;
+  }
+ }catch(e){}
+ img.remove();
+ if(img.parentElement){img.parentElement.classList.remove("has-cover");img.parentElement.classList.add("cover-missing")}
+};
 function gameCoverMarkup(g){
  const steamId=/^steam_(\d+)$/.exec(String(g.id||""))?.[1]||(/store\.steampowered\.com\/app\/(\d+)/i.exec(String(g.storeUrl||""))||[])[1]||"";
  const cover=String(g.cover||(steamId?"https://shared.steamstatic.com/store_item_assets/steam/apps/"+steamId+"/header.jpg":"")).trim(),state=cover?"has-cover":"cover-missing";
- const image=cover?'<img src="'+esc(cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">':"";
+ const image=cover?'<img src="'+esc(cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" decoding="async" onerror="window.gamescopeCoverImageError(this)" style="width:100%;height:100%;object-fit:cover">':"";
  return '<div class="cover '+state+'"><span class="cover-fallback">'+esc(g.emoji||"🎮")+'</span>'+image+'</div>';
 }
 const coverHydrationRunning=new Set(),coverHydrationQueue=[];
