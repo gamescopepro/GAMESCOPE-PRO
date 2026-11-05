@@ -167,11 +167,14 @@ async function main() {
     const page = await context.newPage();
     await context.addInitScript(() => {
       const now = Date.now();
-      localStorage.setItem("sadra_pshub_v1", JSON.stringify([{
-        id: "offline_sync_probe", title: "GAMESCOPE Offline Sync Probe", genre: "Test", emoji: "🎮",
-        cover: "", platforms: "PC", owned: false, fav: false, status: "در فهرست علاقه‌مندی",
-        rating: null, note: "", created: now - 5000, updated: now - 3000
-      }]));
+      if (!localStorage.getItem("gamescope-smoke-seeded")) {
+        localStorage.setItem("sadra_pshub_v1", JSON.stringify([{
+          id: "offline_sync_probe", title: "GAMESCOPE Offline Sync Probe", genre: "Test", emoji: "🎮",
+          cover: "", platforms: "PC", owned: false, fav: false, status: "در فهرست علاقه‌مندی",
+          rating: null, note: "", created: now - 5000, updated: now - 3000
+        }]));
+        localStorage.setItem("gamescope-smoke-seeded", "1");
+      }
       const userId = "00000000-0000-4000-8000-000000000123";
       const nowSeconds = Math.floor(now / 1000);
       const payload = btoa(JSON.stringify({ sub: userId, role: "authenticated", aud: "authenticated", exp: nowSeconds + 3600, iat: nowSeconds }));
