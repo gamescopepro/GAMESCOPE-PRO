@@ -12,6 +12,7 @@ const FIXTURE = {
   slug: "gamescope-test-quest",
   released: "2025-06-01",
   background_image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3C/svg%3E",
+  dataSource: "STEAM",
   rating: 4.2,
   metacritic: 84,
   genres: [{ name: "Adventure" }],
@@ -209,6 +210,8 @@ async function main() {
     }, GAME_TITLE, { timeout: 15000 });
     await onlineCard.waitFor({ state: "visible", timeout: 15000 });
     assert(observedSearchQuery, "The search term was not sent to the catalog proxy.");
+    assert(await onlineCard.locator(".meta").first().textContent().then(t => /استیم/.test(t) && !/بخار/.test(t)), "Steam source brand was translated instead of shown as استیم.");
+    assert(await onlineCard.locator("h4").getAttribute("translate") === "no", "The original game title was not protected from automatic translation.");
     assert(await onlineCard.locator(".cover img").count() === 1, "The online catalog card did not render its cover image.");
     assert(
       await page.locator("#onlineResults").getByText(MOBILE_ONLY_FIXTURE.name, { exact: true }).count() === 0,
