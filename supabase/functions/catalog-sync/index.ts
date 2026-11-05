@@ -5,6 +5,8 @@ const RAWG_BASE = "https://api.rawg.io/api";
 const PAGE_SIZE = 40;
 const MAX_PAGES_PER_CATEGORY = 5;
 const MAX_PLATFORM_PAGES_PER_RUN = 4;
+// Smaller pages reduce payload size for deep RAWG platform-pagination requests.
+const RAWG_PLATFORM_PAGE_SIZE = 20;
 const DETAIL_LOOKUPS_PER_RUN = 6;
 const RAWG_BACKFILL_LOOKUPS_PER_RUN = 4;
 const MAX_REPORT_ITEMS = 30;
@@ -152,16 +154,19 @@ function dateString(date: Date): string {
 
 async function fetchJson(url: string, timeoutMs = 15000): Promise<any> {
   const host = new URL(url).hostname;
-  const retryableStatuses = new Set([408, 502, 503, 504]);
+  const retryableStatuses = new Set([408, 429, 502, 503, 504]);
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let result: Response;
+    let text = "";
     try {
       result = await fetch(url, {
         headers: { "Accept": "application/json" },
         signal: controller.signal,
       });
+      // Keep the timeout active while the response body is being read as well.
+      text = await result.text();
     } catch (error) {
       clearTimeout(timer);
       const retryableTransport = error instanceof Error &&
@@ -169,7 +174,7 @@ async function fetchJson(url: string, timeoutMs = 15000): Promise<any> {
       if (attempt === 0 && retryableTransport) {
         const delayMs = 900 + Math.floor(Math.random() * 350);
         console.warn("Catalog upstream transport retry", JSON.stringify({
-          host, reason: error.name, delayMs,
+          host, reason: error.name, timeoutMs, delayMs,
         }));
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
@@ -179,14 +184,13 @@ async function fetchJson(url: string, timeoutMs = 15000): Promise<any> {
       clearTimeout(timer);
     }
 
-    const text = await result.text();
     let parsed: any = {};
     try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { detail: text.slice(0, 500) }; }
     if (!result.ok) {
       if (attempt === 0 && retryableStatuses.has(result.status)) {
         const retryAfter = Number(result.headers.get("retry-after") ?? "");
         const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(retryAfter * 1000, 2500)
+          ? Math.min(retryAfter * 1000, 4000)
           : 900 + Math.floor(Math.random() * 350);
         console.warn("Catalog upstream HTTP retry", JSON.stringify({
           host, httpStatus: result.status, delayMs,
@@ -224,13 +228,15 @@ async function fetchCategory(
   if (startDate && endDate) initial.searchParams.set("dates", startDate + "," + endDate);
   if (options.parentPlatformId) initial.searchParams.set("parent_platforms", String(options.parentPlatformId));
   initial.searchParams.set("ordering", ordering);
-  initial.searchParams.set("page_size", String(PAGE_SIZE));
+  initial.searchParams.set("page_size", String(options.parentPlatformId ? RAWG_PLATFORM_PAGE_SIZE : PAGE_SIZE));
   initial.searchParams.set("page", String(startPage));
   nextUrl = initial.toString();
 
   while (nextUrl && pages < maxPages) {
     try {
-      const parsed = await fetchJson(nextUrl);
+      // The rolling platform scan gets a longer timeout; deep pages can take longer
+      // than date-filtered RAWG searches, especially during upstream load.
+      const parsed = await fetchJson(nextUrl, options.parentPlatformId ? 25000 : 20000);
       totalCount = Number(parsed?.count ?? totalCount) || totalCount;
       const rows = Array.isArray(parsed?.results) ? parsed.results : [];
       for (const game of rows) {
@@ -247,6 +253,27 @@ async function fetchCategory(
     } catch (err) {
       error = err instanceof Error ? err.message : "RAWG request failed";
       break;
+    }
+  }
+
+  // If a deep platform cursor stalls before returning even one page, restart that
+  // platform scan from page 1. This keeps the catalogue refresh moving instead of
+  // leaving the cursor stuck on the same failing page forever. Upserts are idempotent.
+  if (error && options.parentPlatformId && startPage > 1 && pages === 0) {
+    console.warn("RAWG platform cursor failed; retrying from page 1", JSON.stringify({
+      platformId: options.parentPlatformId,
+      failedPage: startPage,
+      error: error.slice(0, 180),
+    }));
+    const restarted = await fetchCategory(apiKey, startDate, endDate, ordering, {
+      ...options,
+      startPage: 1,
+    });
+    if (!restarted.error && restarted.pages > 0) {
+      return restarted;
+    }
+    if (restarted.error) {
+      error += " | restart from page 1 failed: " + restarted.error.slice(0, 180);
     }
   }
 
@@ -1456,16 +1483,23 @@ Deno.serve(async (req: Request) => {
     }),
   ]);
 
-  if (!playstationResult.error && !xboxResult.error) {
+  // Advance each platform cursor independently. A temporary PlayStation
+  // outage must not force Xbox to repeat pages it has already processed (and vice versa).
+  const platformCursorPatch: Record<string, unknown> = {
+    updated_at: now.toISOString(),
+  };
+  if (!playstationResult.error) {
+    platformCursorPatch.rawg_playstation_page = playstationResult.nextPage;
+  }
+  if (!xboxResult.error) {
+    platformCursorPatch.rawg_xbox_page = xboxResult.nextPage;
+  }
+  if (!playstationResult.error || !xboxResult.error) {
+    platformCursorPatch.last_rawg_platform_scan_at = now.toISOString();
     await restRequest("steam_sync_state?id=eq.main", {
       method: "PATCH",
       headers: { "Prefer": "return=minimal" },
-      body: JSON.stringify({
-        rawg_playstation_page: playstationResult.nextPage,
-        rawg_xbox_page: xboxResult.nextPage,
-        last_rawg_platform_scan_at: now.toISOString(),
-        updated_at: now.toISOString(),
-      }),
+      body: JSON.stringify(platformCursorPatch),
     });
   }
 
