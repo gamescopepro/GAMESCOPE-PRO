@@ -34,6 +34,7 @@ type CatalogRow = {
   release_date?: string | null;
   release_status?: string | null;
   store_url?: string | null;
+  cover?: string | null;
   is_hidden?: boolean;
   is_builtin?: boolean;
   updated_at?: string;
@@ -337,6 +338,7 @@ function normalizeCatalogWrite(row: Partial<CatalogRow>): CatalogRow {
     release_date: row.release_date ?? null,
     release_status: row.release_status ?? "unknown",
     store_url: row.store_url ?? null,
+    cover: row.cover ?? null,
     is_hidden: row.is_hidden ?? false,
     is_builtin: row.is_builtin ?? false,
     updated_at: row.updated_at ?? nowIso,
@@ -413,6 +415,7 @@ async function backfillRawgCatalogMetadata(
         platforms.some(isSupportedPlatformName) &&
         (
           !row.release_date ||
+          !String(row.cover ?? "").trim() ||
           !String(row.publisher ?? "").trim() ||
           !String(row.genre ?? "").trim() ||
           row.genre === "ژانر نامشخص" ||
@@ -477,6 +480,7 @@ async function backfillRawgCatalogMetadata(
         next.publisher = companies.join(" • ");
       }
       if (!next.release_date && releaseDate) next.release_date = releaseDate;
+      if (!String(next.cover ?? "").trim() && typeof detail.background_image === "string" && detail.background_image.trim()) next.cover = detail.background_image.trim();
       if ((!next.genre || next.genre === "ژانر نامشخص") && genre) next.genre = genre;
       if ((next.critic === null || next.critic === undefined) &&
           typeof detail.metacritic === "number") {
@@ -489,7 +493,7 @@ async function backfillRawgCatalogMetadata(
       if (!next.store_url) next.store_url = defaultStoreUrl(next.title, String(next.platforms ?? ""));
 
       const fields: Array<keyof CatalogRow> = [
-        "publisher", "release_date", "release_status", "genre", "critic", "platforms", "store_url",
+        "publisher", "release_date", "release_status", "genre", "critic", "platforms", "store_url", "cover",
       ];
       const changed = fields.some((field) =>
         String(next[field] ?? "") !== String(row[field] ?? "")
@@ -511,6 +515,7 @@ async function backfillRawgCatalogMetadata(
         result.updated++;
         const details = [
           next.publisher && !String(row.publisher ?? "").trim() ? "شرکت سازنده/ناشر" : "",
+          next.cover && !String(row.cover ?? "").trim() ? "تصویر بازی" : "",
           next.release_date && !row.release_date ? "تاریخ انتشار" : "",
           next.genre && (!row.genre || row.genre === "ژانر نامشخص") ? "ژانر" : "",
           next.critic !== null && next.critic !== undefined && (row.critic === null || row.critic === undefined) ? "امتیاز منتقدان" : "",
@@ -558,11 +563,11 @@ async function mergeSupplementalGame(
   storeUrl: string | null,
 ): Promise<"added" | "updated" | "unchanged" | "hidden"> {
   const existingRows = await restRequest(
-    "site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin&title=eq." +
+    "site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,cover,is_hidden,is_builtin&title=eq." +
       encodeURIComponent(title) + "&limit=10",
   );
   const sourceRows = await restRequest(
-    "site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin&id=eq." +
+    "site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,cover,is_hidden,is_builtin&id=eq." +
       encodeURIComponent(sourceId) + "&limit=1",
   );
   const sourceExisting = Array.isArray(sourceRows) ? sourceRows[0] : null;
@@ -1512,7 +1517,7 @@ Deno.serve(async (req: Request) => {
 
   let existingRows: CatalogRow[];
   try {
-    existingRows = await restRequestAll("site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,is_hidden,is_builtin");
+    existingRows = await restRequestAll("site_catalog?select=id,title,genre,platforms,emoji,critic,publisher,release_date,release_status,store_url,cover,is_hidden,is_builtin");
     if (!Array.isArray(existingRows)) existingRows = [];
   } catch (error) {
     const message = "خواندن کاتالوگ عمومی ناموفق بود: " + (error instanceof Error ? error.message : "خطای ناشناخته");
@@ -1536,6 +1541,7 @@ Deno.serve(async (req: Request) => {
     let detailData: RawgGame | null = null;
 
     const needsDetail = !companies.length || !game.released ||
+      (!String(existing?.cover ?? "").trim() && !(typeof game.background_image === "string" && game.background_image.trim())) ||
       !Array.isArray(game.genres) || !game.genres.length ||
       typeof game.metacritic !== "number";
     if (needsDetail && detailRequests < DETAIL_LOOKUPS_PER_RUN) {
@@ -1576,6 +1582,10 @@ Deno.serve(async (req: Request) => {
       const next: CatalogRow = { ...existing };
       if ((!next.publisher || !String(next.publisher).trim()) && companies.length) next.publisher = companies.join(" • ");
       if (!next.release_date && releaseDate) next.release_date = releaseDate;
+      if (!String(next.cover ?? "").trim()) {
+        const image = typeof game.background_image === "string" && game.background_image.trim() ? game.background_image.trim() : typeof detailData?.background_image === "string" ? detailData.background_image.trim() : "";
+        if (image) next.cover = image;
+      }
       if ((!next.genre || next.genre === "ژانر نامشخص") && genre) next.genre = genre;
       if (platformNames) next.platforms = mergePlatformLabels(next.platforms, platformNames);
       if ((next.critic === null || next.critic === undefined) && typeof metacritic === "number") {
@@ -1585,7 +1595,7 @@ Deno.serve(async (req: Request) => {
       if (!next.emoji) next.emoji = "🎮";
       if (next.release_status !== releaseStatus) next.release_status = releaseStatus;
 
-      const fields: Array<keyof CatalogRow> = ["publisher", "release_date", "genre", "critic", "store_url", "emoji", "release_status", "platforms"];
+      const fields: Array<keyof CatalogRow> = ["publisher", "release_date", "genre", "critic", "store_url", "cover", "emoji", "release_status", "platforms"];
       const changed = fields.some((field) => String(next[field] ?? "") !== String(existing[field] ?? ""));
       if (changed) {
         next.updated_at = now.toISOString();
@@ -1611,6 +1621,7 @@ Deno.serve(async (req: Request) => {
         release_date: releaseDate,
         release_status: releaseStatus,
         store_url: storeUrl,
+        cover: typeof game.background_image === "string" && game.background_image.trim() ? game.background_image.trim() : typeof detailData?.background_image === "string" && detailData.background_image.trim() ? detailData.background_image.trim() : null,
         is_hidden: false,
         is_builtin: false,
       };
