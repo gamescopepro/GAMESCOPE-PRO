@@ -22,6 +22,7 @@ const FIXTURE = {
     { platform: { name: "PlayStation 5" } }
   ]
 };
+let observedSearchQuery = false;
 const MOBILE_ONLY_FIXTURE = {
   id: 900002,
   name: "GAMESCOPE Mobile Only Must Be Filtered",
@@ -71,6 +72,7 @@ async function mockSupabase(route) {
     let body = {};
     try { body = request.postDataJSON() || {}; } catch {}
     const search = String(body?.params?.search || "").toLowerCase();
+    if (search.includes("gamescope test quest")) observedSearchQuery = true;
     const results = search
       ? [FIXTURE, MOBILE_ONLY_FIXTURE]
       : [FIXTURE, MOBILE_ONLY_FIXTURE];
@@ -158,12 +160,20 @@ async function main() {
 
     await page.goto("http://127.0.0.1:" + PORT + "/", { waitUntil: "domcontentloaded" });
     await page.locator("#onlineSearch").waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const status = document.querySelector("#onlineStatus")?.textContent || "";
+      return status.length > 0 && !/در حال (جست‌وجو|دریافت)/.test(status);
+    }, null, { timeout: 15000 });
 
     await page.locator("#onlineSearch").fill(GAME_TITLE);
     await page.locator("#onlineSearchBtn").click();
 
     const onlineCard = page.locator("#onlineResults article.card").filter({ hasText: GAME_TITLE }).first();
+    await page.waitForFunction((query) => {
+      return (document.querySelector("#onlineStatus")?.textContent || "").includes("نتایج جست‌وجو برای «" + query + "»");
+    }, GAME_TITLE, { timeout: 15000 });
     await onlineCard.waitFor({ state: "visible", timeout: 15000 });
+    assert(observedSearchQuery, "The search term was not sent to the catalog proxy.");
     assert(
       await page.locator("#onlineResults").getByText(MOBILE_ONLY_FIXTURE.name, { exact: true }).count() === 0,
       "A mobile-only game was shown in the supported-platform catalog."
