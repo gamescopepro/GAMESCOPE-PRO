@@ -6,12 +6,14 @@ on:
     paths:
       - "index.html"
       - "scripts/smoke-check.mjs"
+      - "scripts/browser-smoke.cjs"
       - ".github/workflows/site-smoke.yml"
   pull_request:
     branches: [main]
     paths:
       - "index.html"
       - "scripts/smoke-check.mjs"
+      - "scripts/browser-smoke.cjs"
       - ".github/workflows/site-smoke.yml"
   workflow_dispatch:
 
@@ -31,3 +33,23 @@ jobs:
           node-version: 22
       - name: Run static site smoke checks
         run: node scripts/smoke-check.mjs
+
+  browser:
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned Playwright
+        run: |
+          npm init -y
+          npm install --no-save --no-package-lock playwright@1.64.1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run isolated browser checks
+        run: node scripts/browser-smoke.cjs
