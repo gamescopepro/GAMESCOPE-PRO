@@ -93,10 +93,7 @@ function companyNames(game: RawgGame | null | undefined): string[] {
 }
 
 function isSupportedPlatformName(value: unknown): boolean {
-  const name = String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-  if (["pc", "windows", "microsoft windows", "linux", "macos", "mac os", "steam deck"].includes(name)) return true;
-  if (/^(playstation(?:\s|$)|ps\s?(?:1|2|3|4|5)\b|psp\b|ps vita\b)/i.test(name)) return true;
-  return /^xbox(?:\s|$)/i.test(name);
+  return canonicalPlatformLabel(value) !== null;
 }
 
 function gameHasSupportedPlatform(game: RawgGame): boolean {
@@ -134,10 +131,12 @@ function supportedPlatformNames(game: RawgGame): string[] {
 }
 
 function mergePlatformLabels(...values: Array<string | null | undefined>): string {
+  // Keep only the site's supported families: PlayStation, PC, and Xbox.
+  // Never carry an unsupported label forward from an older record or provider.
   const labels = values
     .flatMap((value) => String(value ?? "").split(/[،,]/))
-    .map((value) => canonicalPlatformLabel(value) ?? value.trim())
-    .filter(Boolean);
+    .map((value) => canonicalPlatformLabel(value))
+    .filter((value): value is string => Boolean(value));
   return [...new Map(labels.map((label) => [label.toLowerCase(), label])).values()].join("، ");
 }
 
@@ -326,11 +325,12 @@ async function restRequestAll(path: string, pageSize = 1000): Promise<any[]> {
 
 function normalizeCatalogWrite(row: Partial<CatalogRow>): CatalogRow {
   const nowIso = new Date().toISOString();
+  const supportedPlatforms = mergePlatformLabels(row.platforms);
   return {
     id: String(row.id ?? ""),
     title: String(row.title ?? "").trim(),
     genre: row.genre ?? "ژانر نامشخص",
-    platforms: row.platforms ?? "نامشخص",
+    platforms: supportedPlatforms || "نامشخص",
     emoji: row.emoji ?? "🎮",
     critic: row.critic ?? null,
     publisher: row.publisher ?? null,
@@ -343,7 +343,7 @@ function normalizeCatalogWrite(row: Partial<CatalogRow>): CatalogRow {
   };
 }
 
-async function upsertCatalogRows(rows: Partial<CatalogRow>[]): Promise<void> {
+function upsertCatalogRows(rows: Partial<CatalogRow>[]): Promise<void> {
   const normalized = rows
     .map(normalizeCatalogWrite)
     .filter((row) => row.id && row.title);
@@ -941,18 +941,14 @@ async function syncIgdbCatalog(): Promise<SupplementalSyncResult> {
     const platformList = Array.isArray(game?.platforms)
       ? game.platforms.map((p: any) => String(p?.name ?? "").trim()).filter(Boolean)
       : [];
-    const platforms = [...new Set(platformList.map((name) => {
-      const normalized = name.toLowerCase();
-      if (/pc|windows|linux|macos|mac os/.test(normalized)) return "PC";
-      if (/playstation\s*5|ps5/.test(normalized)) return "PS5";
-      if (/playstation\s*4|ps4/.test(normalized)) return "PS4";
-      if (/playstation\s*3|ps3/.test(normalized)) return "PS3";
-      if (/playstation\s*2|ps2/.test(normalized)) return "PS2";
-      if (/xbox.*series|series.*xbox/.test(normalized)) return "Xbox Series X|S";
-      if (/xbox.*one|one.*xbox/.test(normalized)) return "Xbox One";
-      if (/xbox/.test(normalized)) return "Xbox";
-      return name;
-    }))].join("، ") || "PC";
+    const platforms = [...new Set(
+      platformList
+        .map((name) => canonicalPlatformLabel(name))
+        .filter((name): name is string => Boolean(name)),
+    )].join("، ");
+    // Do not add games that have no verified PlayStation, PC, or Xbox platform.
+    if (!platforms) continue;
+    result.discovered++;
     const companies = Array.isArray(game?.involved_companies)
       ? game.involved_companies
         .filter((x: any) => x?.publisher || x?.developer)
