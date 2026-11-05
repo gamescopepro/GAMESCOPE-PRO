@@ -14,7 +14,7 @@ const idCounts = new Map();
 for (const id of ids) idCounts.set(id, (idCounts.get(id) || 0) + 1);
 
 for (const [id, count] of idCounts) {
-  if (count > 1) errors.push(\`Duplicate HTML id: \${id} (\${count} times)\`);
+  if (count > 1) errors.push("Duplicate HTML id: " + id + " (" + count + " times)");
 }
 
 const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
@@ -24,9 +24,9 @@ if (scripts.length === 0) errors.push("No inline JavaScript blocks were found.")
 
 for (let i = 0; i < scripts.length; i += 1) {
   try {
-    new Script(scripts[i][2], { filename: \`index-inline-\${i + 1}.js\` });
+    new Script(scripts[i][2], { filename: "index-inline-" + (i + 1) + ".js" });
   } catch (error) {
-    errors.push(\`Inline JavaScript \${i + 1} has a syntax error: \${error.message}\`);
+    errors.push("Inline JavaScript " + (i + 1) + " has a syntax error: " + error.message);
   }
 }
 
@@ -38,7 +38,7 @@ for (const match of html.matchAll(/\$\(\s*["']([^"']+)["']\s*\)/g)) {
   referencedIds.add(match[1]);
 }
 for (const id of referencedIds) {
-  if (!idCounts.has(id)) errors.push(\`JavaScript references missing HTML id: \${id}\`);
+  if (!idCounts.has(id)) errors.push("JavaScript references missing HTML id: " + id);
 }
 
 const requiredIds = [
@@ -47,13 +47,13 @@ const requiredIds = [
   "openPsnAccount", "gsOwnerLogin"
 ];
 for (const id of requiredIds) {
-  if (!idCounts.has(id)) errors.push(\`Required site element is missing: \${id}\`);
+  if (!idCounts.has(id)) errors.push("Required site element is missing: " + id);
 }
 
 const requiredFilters = ["all", "library", "favorites", "playing", "completed", "wishlist"];
 const actualFilters = new Set([...markupOnly.matchAll(/data-filter=["']([^"']+)["']/g)].map((m) => m[1]));
 for (const filter of requiredFilters) {
-  if (!actualFilters.has(filter)) errors.push(\`Required personal-library filter is missing: \${filter}\`);
+  if (!actualFilters.has(filter)) errors.push("Required personal-library filter is missing: " + filter);
 }
 
 for (const requiredCode of [
@@ -63,16 +63,16 @@ for (const requiredCode of [
   "window.gamescopeSearchPublicCatalog",
   "window.gamescopeSyncGame",
   'onConflict:"user_id,game_id"',
-  'gamescope-pro-backup.json'
+  "gamescope-pro-backup.json"
 ]) {
-  if (!html.includes(requiredCode)) errors.push(\`Required feature code is missing: \${requiredCode}\`);
+  if (!html.includes(requiredCode)) errors.push("Required feature code is missing: " + requiredCode);
 }
 
 if (errors.length) {
   console.error("GAMESCOPE PRO smoke checks FAILED:");
-  for (const error of errors) console.error(\` - \${error}\`);
+  for (const error of errors) console.error(" - " + error);
   process.exitCode = 1;
 } else {
   console.log("GAMESCOPE PRO smoke checks passed.");
-  console.log(\`Checked \${scripts.length} inline JavaScript blocks, \${ids.length} HTML ids, \${referencedIds.size} static id references, and \${requiredFilters.length} personal-library filters.\`);
+  console.log("Checked " + scripts.length + " inline JavaScript blocks, " + ids.length + " HTML ids, " + referencedIds.size + " static id references, and " + requiredFilters.length + " personal-library filters.");
 }
