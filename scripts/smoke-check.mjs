@@ -61,6 +61,9 @@ for (const requiredCode of [
   "function gameHasSupportedPlatform",
   "window.gamescopeFetchPublicCatalog",
   "window.gamescopeSearchPublicCatalog",
+  "store_url,cover,updated_at",
+  "function toCloudGameRow",
+  "pendingUploads",
   "window.gamescopeSyncGame",
   'onConflict:"user_id,game_id"',
   "gamescope-pro-backup.json"
