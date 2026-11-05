@@ -93,12 +93,12 @@ async function mockSupabase(route) {
   }
 
   if (pathname.endsWith("/rest/v1/site_settings")) {
-    return sendJson(route, [{
+    return sendJson(route, {
       id: "main",
       tagline: "کاتالوگ جهانی بازی‌های PlayStation، PC و Xbox",
       hero_title: "دنیای بازی‌ها، در یک کاتالوگ 🌍",
       hero_description: "محیط آزمایشی کنترل‌شده برای بررسی سلامت رابط کاربری."
-    }]);
+    });
   }
 
   if (
@@ -188,8 +188,8 @@ async function main() {
     await page.locator('#tabs button[data-filter="playing"]').click();
     await page.locator("#games article.card").filter({ hasText: GAME_TITLE }).waitFor({ state: "visible" });
 
-    await page.locator("#exportBtn").click();
     const downloadPromise = page.waitForEvent("download");
+    await page.locator("#exportBtn").click();
     const download = await downloadPromise;
     assert(
       download.suggestedFilename() === "gamescope-pro-backup.json",
