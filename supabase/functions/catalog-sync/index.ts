@@ -343,7 +343,7 @@ function normalizeCatalogWrite(row: Partial<CatalogRow>): CatalogRow {
   };
 }
 
-function upsertCatalogRows(rows: Partial<CatalogRow>[]): Promise<void> {
+async function upsertCatalogRows(rows: Partial<CatalogRow>[]): Promise<void> {
   const normalized = rows
     .map(normalizeCatalogWrite)
     .filter((row) => row.id && row.title);
