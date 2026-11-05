@@ -395,6 +395,8 @@ function siteCatalogRowToRawg(row){
  const source=match[1],sourceId=match[2];
  const platformNames=String(row.platforms||"").split(/[،,]/).map(x=>x.trim()).filter(Boolean);
  if(!platformNames.some(isSupportedPlatformName))return null;
+ const steamId=(source==="steam"?sourceId:"")||(/store\.steampowered\.com\/app\/(\d+)/i.exec(String(row.store_url||""))||[])[1]||"";
+ const steamCover=steamId?"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"+steamId+"/header.jpg":"";
  const publisherNames=String(row.publisher||"").split(" • ").map(x=>x.trim()).filter(Boolean);
  const critic=row.critic===null||row.critic===undefined?null:Number(row.critic);
  const isSteam=source==="steam";
@@ -402,7 +404,7 @@ function siteCatalogRowToRawg(row){
  return {
   id:source==="rawg"?Number(sourceId):String(row.id),name:String(row.title),slug,released:row.release_date||"",
   rating:Number.isFinite(critic)?critic/2:null,metacritic:Number.isFinite(critic)?critic*10:null,
-  background_image:String(row.cover||(/^steam_(\d+)$/.exec(String(row.id||""))?("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"+/^steam_(\d+)$/.exec(String(row.id||""))[1]+"/header.jpg"):"")).trim(),genres:row.genre?[{name:String(row.genre)}]:[],
+  background_image:String(row.cover||steamCover||"").trim(),genres:row.genre?[{name:String(row.genre)}]:[],
   platforms:platformNames.map(name=>({platform:{name}})),
   publishers:publisherNames.map(name=>({name})),developers:[],
   storeUrl:row.store_url||(isSteam?"https://store.steampowered.com/app/"+sourceId+"/":source==="gog"?"https://www.gog.com/":gameStoreLinks({name:String(row.title),platforms:platformNames.map(name=>({platform:{name}}))})[0]?.url||""),
@@ -994,7 +996,7 @@ document.getElementById("onlineRefreshBtn").addEventListener("click",()=>runFull
 try{localStorage.removeItem("sadra_rawg_api_key_v1")}catch(e){}
 
 function gameCoverMarkup(g){
- const steamId=/^steam_(\d+)$/.exec(String(g.id||""))?.[1];
+ const steamId=/^steam_(\d+)$/.exec(String(g.id||""))?.[1]||(/store\.steampowered\.com\/app\/(\d+)/i.exec(String(g.storeUrl||""))||[])[1]||"";
  const cover=String(g.cover||(steamId?"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"+steamId+"/header.jpg":"")).trim(),state=cover?"has-cover":"cover-missing";
  const image=cover?'<img src="'+esc(cover)+'" alt="کاور '+esc(g.title)+'" loading="lazy" decoding="async" onerror="this.remove();this.parentElement.classList.remove(\'has-cover\');this.parentElement.classList.add(\'cover-missing\')" style="width:100%;height:100%;object-fit:cover">':"";
  return '<div class="cover '+state+'"><span class="cover-fallback">'+esc(g.emoji||"🎮")+'</span>'+image+'</div>';
